@@ -1,7 +1,9 @@
 from fastapi import FastAPI
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.ml.model_loader import model, model_features, disease_classes
+from app.nlp.symptom_mapper import build_confirmation_output
 
 
 app = FastAPI(
@@ -12,6 +14,10 @@ app = FastAPI(
         "and Prediction System."
     ),
 )
+
+
+class SymptomTextRequest(BaseModel):
+    text: str
 
 
 @app.get("/")
@@ -29,6 +35,7 @@ def health_check():
         "environment": settings.app_env,
     }
 
+
 @app.get("/model/status")
 def model_status():
     return {
@@ -39,3 +46,8 @@ def model_status():
         "class_count": len(disease_classes),
         "model_class_count": len(model.classes_),
     }
+
+
+@app.post("/nlp/map")
+def map_symptoms(request: SymptomTextRequest):
+    return build_confirmation_output(request.text)
