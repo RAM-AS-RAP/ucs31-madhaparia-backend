@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.ml.model_loader import model, model_features, disease_classes
 
 
 app = FastAPI(
@@ -26,4 +27,15 @@ def health_check():
         "status": "ok",
         "service": settings.app_name,
         "environment": settings.app_env,
+    }
+
+@app.get("/model/status")
+def model_status():
+    return {
+        "status": "loaded",
+        "model_type": type(model).__name__,
+        "feature_count": len(model_features),
+        "model_feature_count": int(model.n_features_in_),
+        "class_count": len(disease_classes),
+        "model_class_count": len(model.classes_),
     }
