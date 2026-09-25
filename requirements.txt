@@ -4,3 +4,4 @@ pydantic-settings
 numpy==2.4.6
 scikit-learn==1.9.1
 joblib==1.6.0
+rapidfuzz==3.14.6
