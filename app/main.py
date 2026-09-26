@@ -1,9 +1,12 @@
+from typing import Literal
+
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.ml.model_loader import model, model_features, disease_classes
 from app.nlp.symptom_mapper import build_confirmation_output
+from app.services.prediction import predict_top_conditions
 from app.services.symptom_confirmation import confirm_symptoms
 
 
@@ -22,6 +25,13 @@ class SymptomTextRequest(BaseModel):
 
 
 class SymptomConfirmationRequest(BaseModel):
+    text: str
+    confirmed_codes: list[str]
+
+
+class PredictionRequest(BaseModel):
+    age: int = Field(ge=0, le=120)
+    sex: Literal["M", "F"]
     text: str
     confirmed_codes: list[str]
 
@@ -68,6 +78,54 @@ def confirm_recognised_symptoms(
             text=request.text,
             confirmed_codes=request.confirmed_codes,
         )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+
+@app.post("/predict")
+def predict_conditions(request: PredictionRequest):
+    try:
+        confirmation = confirm_symptoms(
+            text=request.text,
+            confirmed_codes=request.confirmed_codes,
+        )
+
+        if confirmation["has_red_flag"]:
+            return {
+                "status": "urgent_review",
+                "age": request.age,
+                "sex": request.sex,
+                "confirmed_codes": confirmation["confirmed_codes"],
+                "model_features": confirmation["model_features"],
+                "has_red_flag": True,
+                "red_flag_symptoms": confirmation["red_flag_symptoms"],
+                "predictions": [],
+                "message": (
+                    "A confirmed red-flag symptom was detected. "
+                    "Prediction was not performed."
+                ),
+            }
+
+        prediction_result = predict_top_conditions(
+            age=request.age,
+            sex=request.sex,
+            symptom_features=confirmation["model_features"],
+        )
+
+        return {
+            "status": "prediction_complete",
+            "age": request.age,
+            "sex": request.sex,
+            "confirmed_codes": confirmation["confirmed_codes"],
+            "model_features": confirmation["model_features"],
+            "has_red_flag": False,
+            "feature_count": prediction_result["feature_count"],
+            "predictions": prediction_result["predictions"],
+        }
+
     except ValueError as error:
         raise HTTPException(
             status_code=400,
