@@ -9,6 +9,11 @@ from app.nlp.symptom_mapper import build_confirmation_output
 from app.services.prediction import predict_top_conditions
 from app.services.symptom_confirmation import confirm_symptoms
 
+from app.services.health_guidance import (
+    enrich_predictions,
+    get_prediction_guidance,
+    get_urgent_guidance,
+)
 
 app = FastAPI(
     title=settings.app_name,
@@ -94,6 +99,8 @@ def predict_conditions(request: PredictionRequest):
         )
 
         if confirmation["has_red_flag"]:
+            urgent_guidance = get_urgent_guidance()
+
             return {
                 "status": "urgent_review",
                 "age": request.age,
@@ -103,10 +110,7 @@ def predict_conditions(request: PredictionRequest):
                 "has_red_flag": True,
                 "red_flag_symptoms": confirmation["red_flag_symptoms"],
                 "predictions": [],
-                "message": (
-                    "A confirmed red-flag symptom was detected. "
-                    "Prediction was not performed."
-                ),
+                **urgent_guidance,
             }
 
         prediction_result = predict_top_conditions(
@@ -114,6 +118,12 @@ def predict_conditions(request: PredictionRequest):
             sex=request.sex,
             symptom_features=confirmation["model_features"],
         )
+
+        enriched_predictions = enrich_predictions(
+            prediction_result["predictions"]
+        )
+
+        guidance = get_prediction_guidance()
 
         return {
             "status": "prediction_complete",
@@ -123,7 +133,8 @@ def predict_conditions(request: PredictionRequest):
             "model_features": confirmation["model_features"],
             "has_red_flag": False,
             "feature_count": prediction_result["feature_count"],
-            "predictions": prediction_result["predictions"],
+            "predictions": enriched_predictions,
+            **guidance,
         }
 
     except ValueError as error:
