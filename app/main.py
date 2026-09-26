@@ -3,6 +3,9 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from sqlalchemy import text
+
+from app.core.database import engine
 from app.core.config import settings
 from app.ml.model_loader import model, model_features, disease_classes
 from app.nlp.symptom_mapper import build_confirmation_output
@@ -55,6 +58,23 @@ def health_check():
         "service": settings.app_name,
         "environment": settings.app_env,
     }
+
+@app.get("/database/status")
+def database_status():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+
+        return {
+            "status": "connected",
+            "database": "postgresql",
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection unavailable.",
+        ) from error
 
 
 @app.get("/model/status")
