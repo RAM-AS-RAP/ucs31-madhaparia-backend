@@ -1,22 +1,57 @@
 ﻿# Respiratory Health Awareness Backend
 
-Backend API for the IS Project 2 Respiratory Health Awareness and Prediction System.
+Backend API for the **Respiratory Health Awareness and Prediction System**.
 
-The backend is being developed with FastAPI and will connect the NLP symptom-mapping component, trained Random Forest model, database and frontend application.
+The system accepts respiratory symptom descriptions in English, Kiswahili, or mixed-language text, maps the text to recognised symptoms, allows symptom confirmation, checks for red-flag symptoms, and uses a trained Random Forest model to return the top three possible condition patterns.
 
-The system is intended for health-awareness support and does not provide a medical diagnosis.
+The system is designed for **health-awareness purposes only** and does not provide a medical diagnosis.
 
-## Current Backend Foundation
+---
 
-The initial backend currently provides:
+## Features
 
-- FastAPI application setup
-- Environment-based configuration
-- Root API endpoint
-- Health-check endpoint
-- Automatic Swagger API documentation
-- Python virtual environment support
-- Git configuration for development files
+The backend provides:
+
+- FastAPI REST API
+- English and Kiswahili symptom mapping
+- Mixed-language symptom input
+- Fuzzy symptom matching
+- Symptom confirmation and rejection
+- Red-flag symptom detection
+- Safety-only red-flag handling
+- Random Forest prediction
+- Top-3 condition pattern results
+- User-friendly disease names
+- Plain-English condition descriptions
+- Model-confidence explanation
+- Health-awareness guidance
+- PostgreSQL prediction history
+- User feedback storage
+- Duplicate feedback protection
+- API validation and error handling
+- Automated backend tests
+
+---
+
+## Technology Stack
+
+- Python 3.11
+- FastAPI
+- Uvicorn
+- Pydantic
+- scikit-learn
+- pandas
+- NumPy
+- joblib
+- RapidFuzz
+- SQLAlchemy
+- PostgreSQL
+- Neon PostgreSQL
+- Psycopg
+- pytest
+- HTTPX
+
+---
 
 ## Project Structure
 
@@ -24,128 +59,48 @@ The initial backend currently provides:
 ucs31-madhaparia-backend/
 │
 ├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   └── core/
-│       ├── __init__.py
-│       └── config.py
+│   ├── core/
+│   │   ├── config.py
+│   │   └── database.py
+│   │
+│   ├── data/
+│   │   └── condition_information.json
+│   │
+│   ├── db/
+│   │   ├── __init__.py
+│   │   └── models.py
+│   │
+│   ├── ml/
+│   │   ├── artifacts/
+│   │   │   ├── disease_classes.json
+│   │   │   ├── model_features.json
+│   │   │   ├── model_metadata.json
+│   │   │   └── respiratory_random_forest_v1.joblib
+│   │   └── model_loader.py
+│   │
+│   ├── nlp/
+│   │   ├── canonical_symptoms.json
+│   │   ├── english_aliases.json
+│   │   ├── feature_catalog.json
+│   │   ├── swahili_aliases.json
+│   │   └── symptom_mapper.py
+│   │
+│   ├── services/
+│   │   ├── health_guidance.py
+│   │   ├── history.py
+│   │   ├── prediction.py
+│   │   └── symptom_confirmation.py
+│   │
+│   └── main.py
 │
 ├── tests/
+│   ├── test_basic_endpoints.py
+│   ├── test_history_feedback.py
+│   ├── test_nlp_confirmation.py
+│   └── test_prediction_validation.py
+│
 ├── .env.example
 ├── .gitignore
-├── README.md
-└── requirements.txt
-```
-
-## Environment Setup
-
-Create a virtual environment:
-
-```powershell
-python -m venv .venv
-```
-
-Activate the virtual environment in PowerShell:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Install the backend dependencies:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-## Environment Configuration
-
-The example environment configuration is stored in:
-
-```text
-.env.example
-```
-
-Current configuration:
-
-```env
-APP_NAME=Respiratory Health Awareness API
-APP_ENV=development
-```
-
-A local `.env` file can be used for development configuration and is excluded from Git.
-
-## Running the Backend
-
-Start the FastAPI development server with:
-
-```powershell
-python -m uvicorn app.main:app --reload
-```
-
-The backend will be available at:
-
-```text
-http://127.0.0.1:8000
-```
-
-## Current API Endpoints
-
-### Root
-
-```text
-GET /
-```
-
-Example response:
-
-```json
-{
-  "message": "Respiratory Health Awareness API is running."
-}
-```
-
-### Health Check
-
-```text
-GET /health
-```
-
-Example response:
-
-```json
-{
-  "status": "ok",
-  "service": "Respiratory Health Awareness API",
-  "environment": "development"
-}
-```
-
-## API Documentation
-
-FastAPI automatically provides interactive Swagger documentation at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Planned Backend Development
-
-Future backend development will include:
-
-- Random Forest model integration
-- NLP symptom mapping
-- English and Swahili symptom processing
-- Symptom confirmation
-- Red-flag safety checks
-- Top 3 prediction API
-- Health-awareness guidance
-- Database integration
-- Prediction history
-- User feedback
-- Validation and automated testing
-
-## Disclaimer
-
-This application is intended for educational and health-awareness purposes only.
-
-Its output must not be treated as a medical diagnosis, prescription or replacement for professional healthcare.
+├── requirements.txt
+├── requirements-dev.txt
+└── README.md
