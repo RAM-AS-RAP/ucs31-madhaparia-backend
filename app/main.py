@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from typing import Literal
 import uuid
 
@@ -7,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import engine, get_db
+from app.core.database import engine, get_db, init_db
 from app.ml.model_loader import (
     model,
     model_features,
@@ -29,7 +30,15 @@ from app.services.prediction import predict_top_conditions
 from app.services.symptom_confirmation import confirm_symptoms
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create any missing tables so a fresh database works out of the box
+    init_db()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.app_name,
     version="0.1.0",
     description=(
