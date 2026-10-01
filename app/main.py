@@ -21,8 +21,6 @@ from app.services.health_guidance import (
     get_urgent_guidance,
 )
 from app.services.history import (
-    get_prediction_session,
-    list_prediction_sessions,
     save_feedback,
     save_prediction_session,
 )
@@ -322,102 +320,6 @@ def predict_conditions(
             status_code=400,
             detail=str(error),
         ) from error
-
-
-# ---------------------------------------------------------
-# Prediction History Endpoints
-# ---------------------------------------------------------
-
-@app.get("/history")
-def prediction_history(
-    limit: int = 20,
-    db: Session = Depends(get_db),
-):
-    limit = max(
-        1,
-        min(limit, 100),
-    )
-
-    sessions = list_prediction_sessions(
-        db,
-        limit=limit,
-    )
-
-    return {
-        "count": len(sessions),
-        "history": [
-            {
-                "prediction_id": str(
-                    session.id
-                ),
-                "age": session.age,
-                "sex": session.sex,
-                "input_text": (
-                    session.input_text
-                ),
-                "confirmed_codes": (
-                    session.confirmed_codes
-                ),
-                "status": session.status,
-                "has_red_flag": (
-                    session.has_red_flag
-                ),
-                "predictions": (
-                    session.predictions
-                ),
-                "created_at": (
-                    session.created_at
-                ),
-            }
-            for session in sessions
-        ],
-    }
-
-
-@app.get(
-    "/history/{prediction_id}"
-)
-def prediction_history_item(
-    prediction_id: uuid.UUID,
-    db: Session = Depends(get_db),
-):
-    session = get_prediction_session(
-        db,
-        prediction_id,
-    )
-
-    if session is None:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "Prediction session not found."
-            ),
-        )
-
-    return {
-        "prediction_id": str(
-            session.id
-        ),
-        "age": session.age,
-        "sex": session.sex,
-        "input_text": session.input_text,
-        "confirmed_codes": (
-            session.confirmed_codes
-        ),
-        "model_features": (
-            session.model_features
-        ),
-        "status": session.status,
-        "has_red_flag": (
-            session.has_red_flag
-        ),
-        "predictions": (
-            session.predictions
-        ),
-        "created_at": (
-            session.created_at
-        ),
-    }
 
 
 # ---------------------------------------------------------

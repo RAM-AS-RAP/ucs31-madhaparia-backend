@@ -25,7 +25,8 @@ The backend provides:
 - Plain-English condition descriptions
 - Model-confidence explanation
 - Health-awareness guidance
-- PostgreSQL prediction history
+- PostgreSQL prediction storage
+- Public prediction-history access disabled until authentication is implemented
 - User feedback storage
 - Duplicate feedback protection
 - API validation and error handling
