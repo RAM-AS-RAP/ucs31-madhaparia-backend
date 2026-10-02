@@ -3,7 +3,7 @@ from typing import Literal
 import uuid
 
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,13 @@ from app.services.history import (
 from app.services.prediction import predict_top_conditions
 from app.services.symptom_confirmation import confirm_symptoms
 
+from app.core.auth import get_current_user
+from app.core.security import create_access_token
+from app.db.models import User
+from app.services.auth import (
+    authenticate_user,
+    create_patient_user,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -72,6 +79,21 @@ class FeedbackRequest(BaseModel):
     comment: str | None = Field(
         default=None,
         max_length=1000,
+    )
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(
+        min_length=8,
+        max_length=128,
     )
 
 
@@ -130,6 +152,86 @@ def model_status():
         ),
     }
 
+
+# ---------------------------------------------------------
+# Authentication Endpoints
+# ---------------------------------------------------------
+
+@app.post(
+    "/auth/register",
+    status_code=201,
+)
+def register_patient(
+    request: RegisterRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        user = create_patient_user(
+            db,
+            email=str(request.email),
+            password=request.password,
+        )
+
+        return {
+            "id": str(user.id),
+            "email": user.email,
+            "role": user.role,
+            "created_at": user.created_at,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail=str(error),
+        ) from error
+
+
+@app.post("/auth/login")
+def login(
+    request: LoginRequest,
+    db: Session = Depends(get_db),
+):
+    user = authenticate_user(
+        db,
+        email=str(request.email),
+        password=request.password,
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password.",
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
+        )
+
+    access_token = create_access_token(
+        user_id=str(user.id),
+        role=user.role,
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in_minutes": (
+            settings.access_token_expire_minutes
+        ),
+    }
+
+
+@app.get("/auth/me")
+def get_authenticated_user(
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    return {
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "role": current_user.role,
+        "created_at": current_user.created_at,
+    }
 
 # ---------------------------------------------------------
 # NLP Endpoints
