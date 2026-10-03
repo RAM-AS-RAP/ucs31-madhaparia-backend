@@ -57,6 +57,10 @@ class User(Base):
         nullable=False,
     )
 
+    prediction_sessions: Mapped[list["PredictionSession"]] = relationship(
+        back_populates="user",
+    )
+
 
 class PredictionSession(Base):
     __tablename__ = "prediction_sessions"
@@ -65,6 +69,17 @@ class PredictionSession(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+    )
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+            name="fk_prediction_sessions_user_id_users",
+        ),
+        nullable=True,
+        index=True,
     )
 
     age: Mapped[int] = mapped_column(
@@ -113,6 +128,10 @@ class PredictionSession(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+
+    user: Mapped[User | None] = relationship(
+        back_populates="prediction_sessions",
     )
 
     feedback_items: Mapped[list["Feedback"]] = relationship(

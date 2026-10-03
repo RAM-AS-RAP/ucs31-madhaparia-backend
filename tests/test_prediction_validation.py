@@ -10,15 +10,28 @@ from app.main import app
 
 client = TestClient(app)
 
+TEST_USER_ID = uuid.uuid4()
+
 
 @pytest.fixture(autouse=True)
-def override_database_dependency():
+def override_dependencies():
     def fake_get_db():
         yield object()
+
+    def fake_get_current_user():
+        return SimpleNamespace(
+            id=TEST_USER_ID,
+            email="patient@example.com",
+            role="patient",
+        )
 
     app.dependency_overrides[
         main_module.get_db
     ] = fake_get_db
+
+    app.dependency_overrides[
+        main_module.get_current_user
+    ] = fake_get_current_user
 
     yield
 
@@ -27,10 +40,14 @@ def override_database_dependency():
 
 @pytest.fixture
 def mock_prediction_save(monkeypatch):
+    saved = {}
+
     def fake_save_prediction_session(
         db,
         **kwargs,
     ):
+        saved.update(kwargs)
+
         return SimpleNamespace(
             id=uuid.uuid4()
         )
@@ -40,6 +57,8 @@ def mock_prediction_save(monkeypatch):
         "save_prediction_session",
         fake_save_prediction_session,
     )
+
+    return saved
 
 
 def test_normal_prediction(
@@ -67,6 +86,11 @@ def test_normal_prediction(
     assert data["feature_count"] == 198
     assert len(data["predictions"]) == 3
     assert "prediction_id" in data
+
+    assert (
+        mock_prediction_save["user_id"]
+        == TEST_USER_ID
+    )
 
     for prediction in data["predictions"]:
         assert "rank" in prediction
@@ -105,6 +129,11 @@ def test_red_flag_blocks_prediction(
     assert "prediction_id" in data
     assert "health_guidance" in data
     assert "disclaimer" in data
+
+    assert (
+        mock_prediction_save["user_id"]
+        == TEST_USER_ID
+    )
 
 
 def test_invalid_age():
@@ -176,4 +205,29 @@ def test_prediction_requires_confirmed_model_feature():
     assert (
         "At least one confirmed model symptom feature"
         in response.json()["detail"]
+    )
+
+def test_prediction_requires_authentication():
+    app.dependency_overrides.pop(
+        main_module.get_current_user,
+        None,
+    )
+
+    response = client.post(
+        "/predict",
+        json={
+            "age": 25,
+            "sex": "M",
+            "text": "I have fever",
+            "confirmed_codes": [
+                "fever",
+            ],
+        },
+    )
+
+    assert response.status_code == 401
+
+    assert (
+        response.json()["detail"]
+        == "Authentication required."
     )

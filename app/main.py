@@ -271,6 +271,7 @@ def confirm_recognised_symptoms(
 def predict_conditions(
     request: PredictionRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         confirmation = confirm_symptoms(
@@ -290,6 +291,7 @@ def predict_conditions(
             prediction_session = (
                 save_prediction_session(
                     db,
+                    user_id=current_user.id,
                     age=request.age,
                     sex=request.sex,
                     input_text=request.text,
@@ -367,6 +369,7 @@ def predict_conditions(
         prediction_session = (
             save_prediction_session(
                 db,
+                user_id=current_user.id,
                 age=request.age,
                 sex=request.sex,
                 input_text=request.text,
