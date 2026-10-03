@@ -41,21 +41,35 @@ def save_prediction_session(
 def get_prediction_session(
     db: Session,
     prediction_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> PredictionSession | None:
-    return db.get(PredictionSession, prediction_id)
+    statement = select(PredictionSession).where(
+        PredictionSession.id == prediction_id,
+        PredictionSession.user_id == user_id,
+    )
+
+    return db.scalar(statement)
 
 
 def list_prediction_sessions(
     db: Session,
+    user_id: uuid.UUID,
     limit: int = 20,
 ) -> list[PredictionSession]:
     statement = (
         select(PredictionSession)
-        .order_by(PredictionSession.created_at.desc())
+        .where(
+            PredictionSession.user_id == user_id
+        )
+        .order_by(
+            PredictionSession.created_at.desc()
+        )
         .limit(limit)
     )
 
-    return list(db.scalars(statement).all())
+    return list(
+        db.scalars(statement).all()
+    )
 
 
 def save_feedback(

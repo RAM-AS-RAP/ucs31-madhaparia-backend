@@ -2,38 +2,40 @@ from contextlib import asynccontextmanager
 from typing import Literal
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import engine, get_db, init_db
+from app.core.security import create_access_token
+from app.db.models import User
 from app.ml.model_loader import (
     model,
     model_features,
     disease_classes,
 )
 from app.nlp.symptom_mapper import build_confirmation_output
+from app.services.auth import (
+    authenticate_user,
+    create_patient_user,
+)
 from app.services.health_guidance import (
     enrich_predictions,
     get_prediction_guidance,
     get_urgent_guidance,
 )
 from app.services.history import (
+    get_prediction_session,
+    list_prediction_sessions,
     save_feedback,
     save_prediction_session,
 )
 from app.services.prediction import predict_top_conditions
 from app.services.symptom_confirmation import confirm_symptoms
 
-from app.core.auth import get_current_user
-from app.core.security import create_access_token
-from app.db.models import User
-from app.services.auth import (
-    authenticate_user,
-    create_patient_user,
-)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -80,6 +82,7 @@ class FeedbackRequest(BaseModel):
         default=None,
         max_length=1000,
     )
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -233,6 +236,7 @@ def get_authenticated_user(
         "created_at": current_user.created_at,
     }
 
+
 # ---------------------------------------------------------
 # NLP Endpoints
 # ---------------------------------------------------------
@@ -271,7 +275,9 @@ def confirm_recognised_symptoms(
 def predict_conditions(
     request: PredictionRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     try:
         confirmation = confirm_symptoms(
@@ -425,6 +431,98 @@ def predict_conditions(
             status_code=400,
             detail=str(error),
         ) from error
+
+
+# ---------------------------------------------------------
+# Patient History Endpoints
+# ---------------------------------------------------------
+
+@app.get("/history")
+def get_patient_history(
+    limit: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    sessions = list_prediction_sessions(
+        db,
+        user_id=current_user.id,
+        limit=limit,
+    )
+
+    return {
+        "count": len(sessions),
+        "history": [
+            {
+                "prediction_id": str(
+                    session.id
+                ),
+                "age": session.age,
+                "sex": session.sex,
+                "input_text": (
+                    session.input_text
+                ),
+                "confirmed_codes": (
+                    session.confirmed_codes
+                ),
+                "status": session.status,
+                "has_red_flag": (
+                    session.has_red_flag
+                ),
+                "predictions": (
+                    session.predictions
+                ),
+                "created_at": (
+                    session.created_at
+                ),
+            }
+            for session in sessions
+        ],
+    }
+
+
+@app.get("/history/{prediction_id}")
+def get_patient_history_item(
+    prediction_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    session = get_prediction_session(
+        db,
+        prediction_id=prediction_id,
+        user_id=current_user.id,
+    )
+
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Prediction session was not found."
+            ),
+        )
+
+    return {
+        "prediction_id": str(session.id),
+        "age": session.age,
+        "sex": session.sex,
+        "input_text": session.input_text,
+        "confirmed_codes": (
+            session.confirmed_codes
+        ),
+        "status": session.status,
+        "has_red_flag": (
+            session.has_red_flag
+        ),
+        "predictions": session.predictions,
+        "created_at": session.created_at,
+    }
 
 
 # ---------------------------------------------------------
