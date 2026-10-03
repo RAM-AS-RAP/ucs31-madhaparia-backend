@@ -3,6 +3,7 @@ from typing import Literal
 import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -58,6 +59,20 @@ app = FastAPI(
         "Backend API for the Respiratory Health Awareness "
         "and Prediction System."
     ),
+)
+
+allowed_origins = [
+    origin.strip()
+    for origin in settings.frontend_origins.split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
