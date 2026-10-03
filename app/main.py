@@ -7,7 +7,10 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
+from app.core.auth import (
+    get_current_user,
+    require_admin,
+)
 from app.core.config import settings
 from app.core.database import engine, get_db, init_db
 from app.core.security import create_access_token
@@ -28,7 +31,10 @@ from app.services.health_guidance import (
     get_urgent_guidance,
 )
 from app.services.history import (
+    get_any_prediction_session,
     get_prediction_session,
+    list_all_feedback,
+    list_all_prediction_sessions,
     list_prediction_sessions,
     save_feedback,
     save_prediction_session,
@@ -485,6 +491,144 @@ def get_patient_history(
         ],
     }
 
+# ---------------------------------------------------------
+# Admin Endpoints
+# ---------------------------------------------------------
+
+@app.get("/admin/history")
+def get_admin_history(
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=500,
+    ),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(
+        require_admin
+    ),
+):
+    sessions = list_all_prediction_sessions(
+        db,
+        limit=limit,
+    )
+
+    return {
+        "count": len(sessions),
+        "history": [
+            {
+                "prediction_id": str(
+                    session.id
+                ),
+                "user_id": (
+                    str(session.user_id)
+                    if session.user_id
+                    else None
+                ),
+                "age": session.age,
+                "sex": session.sex,
+                "input_text": (
+                    session.input_text
+                ),
+                "confirmed_codes": (
+                    session.confirmed_codes
+                ),
+                "status": session.status,
+                "has_red_flag": (
+                    session.has_red_flag
+                ),
+                "predictions": (
+                    session.predictions
+                ),
+                "created_at": (
+                    session.created_at
+                ),
+            }
+            for session in sessions
+        ],
+    }
+
+
+@app.get("/admin/history/{prediction_id}")
+def get_admin_history_item(
+    prediction_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(
+        require_admin
+    ),
+):
+    session = get_any_prediction_session(
+        db,
+        prediction_id=prediction_id,
+    )
+
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Prediction session was not found."
+            ),
+        )
+
+    return {
+        "prediction_id": str(session.id),
+        "user_id": (
+            str(session.user_id)
+            if session.user_id
+            else None
+        ),
+        "age": session.age,
+        "sex": session.sex,
+        "input_text": session.input_text,
+        "confirmed_codes": (
+            session.confirmed_codes
+        ),
+        "status": session.status,
+        "has_red_flag": (
+            session.has_red_flag
+        ),
+        "predictions": session.predictions,
+        "created_at": session.created_at,
+    }
+
+
+@app.get("/admin/feedback")
+def get_admin_feedback(
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=500,
+    ),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(
+        require_admin
+    ),
+):
+    feedback_items = list_all_feedback(
+        db,
+        limit=limit,
+    )
+
+    return {
+        "count": len(feedback_items),
+        "feedback": [
+            {
+                "feedback_id": str(
+                    item.id
+                ),
+                "prediction_id": str(
+                    item.prediction_session_id
+                ),
+                "was_helpful": (
+                    item.was_helpful
+                ),
+                "comment": item.comment,
+                "created_at": (
+                    item.created_at
+                ),
+            }
+            for item in feedback_items
+        ],
+    }
 
 @app.get("/history/{prediction_id}")
 def get_patient_history_item(

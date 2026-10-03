@@ -71,6 +71,49 @@ def list_prediction_sessions(
         db.scalars(statement).all()
     )
 
+def list_all_prediction_sessions(
+    db: Session,
+    limit: int = 100,
+) -> list[PredictionSession]:
+    statement = (
+        select(PredictionSession)
+        .order_by(
+            PredictionSession.created_at.desc()
+        )
+        .limit(limit)
+    )
+
+    return list(
+        db.scalars(statement).all()
+    )
+
+
+def get_any_prediction_session(
+    db: Session,
+    prediction_id: uuid.UUID,
+) -> PredictionSession | None:
+    return db.get(
+        PredictionSession,
+        prediction_id,
+    )
+
+
+def list_all_feedback(
+    db: Session,
+    limit: int = 100,
+) -> list[Feedback]:
+    statement = (
+        select(Feedback)
+        .order_by(
+            Feedback.created_at.desc()
+        )
+        .limit(limit)
+    )
+
+    return list(
+        db.scalars(statement).all()
+    )
+
 
 def save_feedback(
     db: Session,
