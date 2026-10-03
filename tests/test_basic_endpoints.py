@@ -100,3 +100,38 @@ def test_database_status_unavailable(monkeypatch):
         response.json()["detail"]
         == "Database connection unavailable."
     )
+
+def test_cors_allows_frontend_origin():
+    response = client.options(
+        "/auth/register",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "content-type"
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+
+    assert (
+        response.headers[
+            "access-control-allow-origin"
+        ]
+        == "http://localhost:5173"
+    )
+
+def test_cors_does_not_allow_unknown_origin():
+    response = client.options(
+        "/auth/register",
+        headers={
+            "Origin": "https://example.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert (
+        "access-control-allow-origin"
+        not in response.headers
+    )
