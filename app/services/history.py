@@ -9,6 +9,7 @@ from app.db.models import Feedback, PredictionSession
 def save_prediction_session(
     db: Session,
     *,
+    user_id: uuid.UUID,
     age: int,
     sex: str,
     input_text: str,
@@ -19,6 +20,7 @@ def save_prediction_session(
     predictions: list[dict],
 ) -> PredictionSession:
     session = PredictionSession(
+        user_id=user_id,
         age=age,
         sex=sex,
         input_text=input_text,
