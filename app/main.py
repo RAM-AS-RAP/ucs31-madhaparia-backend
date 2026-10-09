@@ -265,20 +265,24 @@ def get_authenticated_user(
 @app.post("/nlp/map")
 def map_symptoms(
     request: SymptomTextRequest,
+    db: Session = Depends(get_db),
 ):
     return build_confirmation_output(
-        request.text
+        request.text,
+        db,
     )
 
 
 @app.post("/symptoms/confirm")
 def confirm_recognised_symptoms(
     request: SymptomConfirmationRequest,
+    db: Session = Depends(get_db),
 ):
     try:
         return confirm_symptoms(
             text=request.text,
             confirmed_codes=request.confirmed_codes,
+            db=db,
         )
 
     except ValueError as error:
@@ -304,6 +308,7 @@ def predict_conditions(
         confirmation = confirm_symptoms(
             text=request.text,
             confirmed_codes=request.confirmed_codes,
+            db=db,
         )
 
         # -------------------------------------------------

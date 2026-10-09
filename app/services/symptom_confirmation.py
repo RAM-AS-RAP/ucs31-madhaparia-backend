@@ -1,8 +1,15 @@
 from app.nlp.symptom_mapper import build_confirmation_output
+from sqlalchemy.orm import Session
 
-
-def confirm_symptoms(text: str, confirmed_codes: list[str]):
-    mapping_result = build_confirmation_output(text)
+def confirm_symptoms(
+    text: str,
+    confirmed_codes: list[str],
+    db: Session,
+):
+    mapping_result = build_confirmation_output(
+        text,
+        db,
+    )
 
     recognised_symptoms = mapping_result["recognised_symptoms"]
 
