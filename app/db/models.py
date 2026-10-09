@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -175,4 +176,109 @@ class Feedback(Base):
 
     prediction_session: Mapped["PredictionSession"] = relationship(
         back_populates="feedback_items",
+    )
+
+
+
+class Symptom(Base):
+    __tablename__ = "symptoms"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    code: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    features: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+    )
+
+    kind: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="symptom",
+    )
+
+    is_red_flag: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    aliases: Mapped[list["SymptomAlias"]] = relationship(
+        back_populates="symptom",
+        cascade="all, delete-orphan",
+    )
+
+
+class SymptomAlias(Base):
+    __tablename__ = "symptom_aliases"
+
+    __table_args__ = (
+        CheckConstraint(
+            "language IN ('en', 'sw')",
+            name="ck_symptom_aliases_language",
+        ),
+        UniqueConstraint(
+            "symptom_id",
+            "alias",
+            "language",
+            name="uq_symptom_aliases_symptom_alias_language",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    symptom_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey(
+            "symptoms.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        index=True,
+    )
+
+    alias: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+    )
+
+    language: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    symptom: Mapped["Symptom"] = relationship(
+        back_populates="aliases",
     )
