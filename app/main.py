@@ -43,6 +43,9 @@ from app.services.history import (
 from app.services.prediction import predict_top_conditions
 from app.services.symptom_confirmation import confirm_symptoms
 
+from app.services.model_versions import (
+    get_active_model_version,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -340,6 +343,7 @@ def predict_conditions(
                     status="urgent_review",
                     has_red_flag=True,
                     predictions=[],
+                    model_version_id=None,
                 )
             )
 
@@ -373,6 +377,10 @@ def predict_conditions(
         # -------------------------------------------------
         # Normal prediction route
         # -------------------------------------------------
+
+        active_model_version = (
+            get_active_model_version(db)
+        )
 
         prediction_result = (
             predict_top_conditions(
@@ -420,6 +428,7 @@ def predict_conditions(
                 predictions=(
                     enriched_predictions
                 ),
+                model_version_id=active_model_version.id,
             )
         )
 
@@ -428,6 +437,9 @@ def predict_conditions(
                 prediction_session.id
             ),
             "status": "prediction_complete",
+            "model_version": (
+                active_model_version.version
+            ),
             "age": request.age,
             "sex": request.sex,
             "confirmed_codes": (
