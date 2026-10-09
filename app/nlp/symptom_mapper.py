@@ -11,6 +11,11 @@ import re
 import sys
 from pathlib import Path
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.models import Symptom, SymptomAlias
+
 from rapidfuzz import fuzz, process
 
 
@@ -92,44 +97,79 @@ def normalize_text(text):
     return text
 
 
-def build_alias_index():
+def build_alias_index(
+    db: Session | None = None,
+):
     """
-    Combine English and Swahili aliases into one searchable index.
+    Build the searchable English and Swahili alias index.
+
+    The API uses the persistent database catalogue.
+    JSON files remain available for standalone use.
     """
-
-    english_aliases = load_json(
-        ENGLISH_ALIASES_PATH
-    )
-
-    swahili_aliases = load_json(
-        SWAHILI_ALIASES_PATH
-    )
 
     alias_index = []
 
-    for code, aliases in english_aliases.items():
-        for alias in aliases:
+    if db is not None:
+        rows = db.execute(
+            select(
+                SymptomAlias.alias,
+                Symptom.code,
+                SymptomAlias.language,
+            ).join(
+                Symptom,
+                SymptomAlias.symptom_id
+                == Symptom.id,
+            )
+        ).all()
+
+        for row in rows:
             alias_index.append(
                 {
-                    "alias": normalize_text(alias),
-                    "code": code,
-                    "language": "en",
+                    "alias": normalize_text(
+                        row.alias
+                    ),
+                    "code": row.code,
+                    "language": row.language,
                 }
             )
 
-    for code, aliases in swahili_aliases.items():
-        for alias in aliases:
-            alias_index.append(
-                {
-                    "alias": normalize_text(alias),
-                    "code": code,
-                    "language": "sw",
-                }
-            )
+    else:
+        english_aliases = load_json(
+            ENGLISH_ALIASES_PATH
+        )
 
-    # Longer phrases are checked first.
-    # Example:
-    # "homa ya mafua" should be checked before "homa".
+        swahili_aliases = load_json(
+            SWAHILI_ALIASES_PATH
+        )
+
+        for code, aliases in (
+            english_aliases.items()
+        ):
+            for alias in aliases:
+                alias_index.append(
+                    {
+                        "alias": normalize_text(
+                            alias
+                        ),
+                        "code": code,
+                        "language": "en",
+                    }
+                )
+
+        for code, aliases in (
+            swahili_aliases.items()
+        ):
+            for alias in aliases:
+                alias_index.append(
+                    {
+                        "alias": normalize_text(
+                            alias
+                        ),
+                        "code": code,
+                        "language": "sw",
+                    }
+                )
+
     alias_index.sort(
         key=lambda item: len(
             item["alias"]
@@ -138,6 +178,7 @@ def build_alias_index():
     )
 
     return alias_index
+
 
 def find_fuzzy_matches(
     normalized_text,
@@ -277,7 +318,10 @@ def find_fuzzy_matches(
 
     return fuzzy_matches
 
-def find_symptoms(text):
+def find_symptoms(
+    text,
+    db: Session | None = None,
+):
     """
     Find canonical symptoms in English, Swahili,
     or mixed-language free text.
@@ -291,7 +335,9 @@ def find_symptoms(text):
         text
     )
 
-    alias_index = build_alias_index()
+    alias_index = build_alias_index(
+        db
+    )
 
     matches = []
     matched_codes = set()
@@ -538,17 +584,23 @@ def suggest_symptoms(
 
     return suggestions
 
-def build_confirmation_output(text):
+def build_confirmation_output(
+    text,
+    db: Session | None = None,
+):
     """
     Build the structured output that can be sent to the
     frontend for symptom review and confirmation.
     """
 
     matches = find_symptoms(
-        text
+        text,
+        db,
     )
 
-    alias_index = build_alias_index()
+    alias_index = build_alias_index(
+        db
+    )
 
     unmatched_phrases = (
         find_unmatched_text(
@@ -564,14 +616,35 @@ def build_confirmation_output(text):
         )
     )
 
-    canonical_symptoms = load_json(
-        CANONICAL_SYMPTOMS_PATH
-    )
+    if db is not None:
+        database_symptoms = db.scalars(
+            select(Symptom)
+        ).all()
 
-    canonical_index = {
-        entry["code"]: entry
-        for entry in canonical_symptoms
-    }
+        canonical_index = {
+            symptom.code: {
+                "code": symptom.code,
+                "display_name": (
+                    symptom.display_name
+                ),
+                "features": symptom.features,
+                "kind": symptom.kind,
+                "is_red_flag": (
+                    symptom.is_red_flag
+                ),
+            }
+            for symptom in database_symptoms
+        }
+
+    else:
+        canonical_symptoms = load_json(
+            CANONICAL_SYMPTOMS_PATH
+        )
+
+        canonical_index = {
+            entry["code"]: entry
+            for entry in canonical_symptoms
+        }
 
     recognised_symptoms = []
 

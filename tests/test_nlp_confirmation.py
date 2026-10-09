@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.nlp import symptom_mapper
 
 
 client = TestClient(app)
@@ -201,3 +202,83 @@ def test_invalid_confirmation():
     data = response.json()
 
     assert "skin_rash" in data["detail"]
+
+def test_nlp_endpoint_uses_database_catalog(
+    monkeypatch,
+):
+    def fail_json_load(*args, **kwargs):
+        raise AssertionError(
+            "JSON catalogue should not be used "
+            "by the API."
+        )
+
+    monkeypatch.setattr(
+        symptom_mapper,
+        "load_json",
+        fail_json_load,
+    )
+
+    response = client.post(
+        "/nlp/map",
+        json={
+            "text": "I have fever na kikohozi"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    codes = {
+        symptom["code"]
+        for symptom
+        in data["recognised_symptoms"]
+    }
+
+    assert "fever" in codes
+    assert "cough" in codes
+
+
+def test_confirmation_endpoint_uses_database_catalog(
+    monkeypatch,
+):
+    def fail_json_load(*args, **kwargs):
+        raise AssertionError(
+            "JSON catalogue should not be used "
+            "by the API."
+        )
+
+    monkeypatch.setattr(
+        symptom_mapper,
+        "load_json",
+        fail_json_load,
+    )
+
+    response = client.post(
+        "/symptoms/confirm",
+        json={
+            "text": "I have fever and cough",
+            "confirmed_codes": [
+                "fever",
+                "cough",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert set(
+        data["confirmed_codes"]
+    ) == {
+        "fever",
+        "cough",
+    }
+
+    assert set(
+        data["model_features"]
+    ) == {
+        "E_91",
+        "E_201",
+    }

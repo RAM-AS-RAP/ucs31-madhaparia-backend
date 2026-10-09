@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main_module
+from app.core.database import SessionLocal
 from app.main import app
 
 
@@ -16,7 +17,12 @@ TEST_USER_ID = uuid.uuid4()
 @pytest.fixture(autouse=True)
 def override_dependencies():
     def fake_get_db():
-        yield object()
+        db = SessionLocal()
+
+        try:
+            yield db
+        finally:
+            db.close()
 
     def fake_get_current_user():
         return SimpleNamespace(
