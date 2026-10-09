@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import ServiceNotReadyError
 from app.db.models import ModelVersion
 
 
@@ -20,15 +21,17 @@ def get_active_model_version(
     )
 
     if not active_versions:
-        raise RuntimeError(
+        raise ServiceNotReadyError(
             "No active machine-learning "
-            "model version is configured."
+            "model version is configured. "
+            "Run: python -m app.db.seed_model_version"
         )
 
     if len(active_versions) > 1:
-        raise RuntimeError(
+        raise ServiceNotReadyError(
             "Multiple active machine-learning "
-            "model versions are configured."
+            "model versions are configured. "
+            "Run: python -m app.db.seed_model_version"
         )
 
     return active_versions[0]

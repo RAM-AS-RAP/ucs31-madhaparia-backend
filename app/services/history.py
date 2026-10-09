@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import Feedback, PredictionSession
@@ -121,16 +122,18 @@ def save_feedback(
     db: Session,
     *,
     prediction_session_id: uuid.UUID,
+    user_id: uuid.UUID,
     was_helpful: bool,
     comment: str | None,
 ) -> Feedback:
-    prediction_session = db.get(
-        PredictionSession,
-        prediction_session_id,
+    prediction_session = get_prediction_session(
+        db,
+        prediction_id=prediction_session_id,
+        user_id=user_id,
     )
 
     if prediction_session is None:
-        raise ValueError(
+        raise LookupError(
             "Prediction session was not found."
         )
 
@@ -154,7 +157,16 @@ def save_feedback(
     )
 
     db.add(feedback)
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise ValueError(
+            "Feedback has already been submitted "
+            "for this prediction session."
+        ) from error
+
     db.refresh(feedback)
 
     return feedback
