@@ -88,6 +88,7 @@ def test_normal_prediction(
     data = response.json()
 
     assert data["status"] == "prediction_complete"
+    assert data["model_version"] == "1.0"
     assert data["has_red_flag"] is False
     assert data["feature_count"] == 198
     assert len(data["predictions"]) == 3
@@ -96,6 +97,11 @@ def test_normal_prediction(
     assert (
         mock_prediction_save["user_id"]
         == TEST_USER_ID
+    )
+
+    assert (
+        mock_prediction_save["model_version_id"]
+        is not None
     )
 
     for prediction in data["predictions"]:
@@ -139,6 +145,11 @@ def test_red_flag_blocks_prediction(
     assert (
         mock_prediction_save["user_id"]
         == TEST_USER_ID
+    )
+
+    assert (
+        mock_prediction_save["model_version_id"]
+        is None
     )
 
 

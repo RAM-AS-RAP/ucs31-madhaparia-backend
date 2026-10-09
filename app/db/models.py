@@ -62,6 +62,102 @@ class User(Base):
         back_populates="user",
     )
 
+class ModelVersion(Base):
+    __tablename__ = "model_versions"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "model_name",
+            "version",
+            name="uq_model_versions_model_name_version",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    model_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    version: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    purpose: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    artifact_filename: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    feature_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    class_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    training_samples: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    validation_samples: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    test_samples: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    parameters: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+
+    validation_metrics: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+
+    test_metrics: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    prediction_sessions: Mapped[
+        list["PredictionSession"]
+    ] = relationship(
+        back_populates="model_version",
+    )
+
 
 class PredictionSession(Base):
     __tablename__ = "prediction_sessions"
@@ -133,6 +229,28 @@ class PredictionSession(Base):
 
     user: Mapped[User | None] = relationship(
         back_populates="prediction_sessions",
+    )
+
+    model_version: Mapped[
+        ModelVersion | None
+    ] = relationship(
+        back_populates="prediction_sessions",
+    )
+
+    model_version_id: Mapped[
+        uuid.UUID | None
+    ] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "model_versions.id",
+            ondelete="SET NULL",
+            name=(
+                "fk_prediction_sessions_"
+                "model_version_id_model_versions"
+            ),
+        ),
+        nullable=True,
+        index=True,
     )
 
     feedback_items: Mapped[list["Feedback"]] = relationship(

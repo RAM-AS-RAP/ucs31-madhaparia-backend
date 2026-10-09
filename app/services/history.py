@@ -18,6 +18,7 @@ def save_prediction_session(
     status: str,
     has_red_flag: bool,
     predictions: list[dict],
+    model_version_id: uuid.UUID | None = None,
 ) -> PredictionSession:
     session = PredictionSession(
         user_id=user_id,
@@ -29,6 +30,7 @@ def save_prediction_session(
         status=status,
         has_red_flag=has_red_flag,
         predictions=predictions,
+        model_version_id=model_version_id,
     )
 
     db.add(session)
