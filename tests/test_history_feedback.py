@@ -235,7 +235,29 @@ def test_patient_cannot_view_another_users_prediction(
     )
 
 
-def test_feedback_success(monkeypatch):
+def test_feedback_requires_authentication():
+    response = client.post(
+        "/feedback",
+        json={
+            "prediction_id": str(
+                uuid.uuid4()
+            ),
+            "was_helpful": True,
+        },
+    )
+
+    assert response.status_code == 401
+
+    assert (
+        response.json()["detail"]
+        == "Authentication required."
+    )
+
+
+def test_feedback_success(
+    monkeypatch,
+    authenticated_patient,
+):
     prediction_id = uuid.uuid4()
     feedback_id = uuid.uuid4()
 
@@ -252,6 +274,7 @@ def test_feedback_success(monkeypatch):
         "save_feedback",
         lambda db,
         prediction_session_id,
+        user_id,
         was_helpful,
         comment: fake_feedback,
     )
@@ -291,7 +314,46 @@ def test_feedback_success(monkeypatch):
     assert data["was_helpful"] is True
 
 
-def test_duplicate_feedback(monkeypatch):
+def test_feedback_for_unknown_prediction_returns_404(
+    monkeypatch,
+    authenticated_patient,
+):
+    def fake_save_feedback(
+        *args,
+        **kwargs,
+    ):
+        raise LookupError(
+            "Prediction session was not found."
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "save_feedback",
+        fake_save_feedback,
+    )
+
+    response = client.post(
+        "/feedback",
+        json={
+            "prediction_id": str(
+                uuid.uuid4()
+            ),
+            "was_helpful": True,
+        },
+    )
+
+    assert response.status_code == 404
+
+    assert (
+        response.json()["detail"]
+        == "Prediction session was not found."
+    )
+
+
+def test_duplicate_feedback(
+    monkeypatch,
+    authenticated_patient,
+):
     prediction_id = uuid.uuid4()
 
     def fake_save_feedback(
@@ -328,7 +390,9 @@ def test_duplicate_feedback(monkeypatch):
     )
 
 
-def test_feedback_comment_too_long():
+def test_feedback_comment_too_long(
+    authenticated_patient,
+):
     response = client.post(
         "/feedback",
         json={

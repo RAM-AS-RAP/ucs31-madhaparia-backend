@@ -60,7 +60,12 @@ def test_database_status_connected(monkeypatch):
         def execute(self, statement):
             return None
 
+    class FakeDialect:
+        name = "postgresql"
+
     class FakeEngine:
+        dialect = FakeDialect()
+
         def connect(self):
             return FakeConnection()
 
