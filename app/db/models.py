@@ -262,6 +262,13 @@ class PredictionSession(Base):
 class Feedback(Base):
     __tablename__ = "feedback"
 
+    __table_args__ = (
+        UniqueConstraint(
+            "prediction_session_id",
+            name="uq_feedback_prediction_session_id",
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,

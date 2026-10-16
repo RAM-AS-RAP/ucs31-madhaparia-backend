@@ -2,8 +2,9 @@ from contextlib import asynccontextmanager
 from typing import Literal
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -13,7 +14,8 @@ from app.core.auth import (
     require_admin,
 )
 from app.core.config import settings
-from app.core.database import engine, get_db, init_db
+from app.core.database import check_schema, engine, get_db
+from app.core.errors import ServiceNotReadyError
 from app.core.security import create_access_token
 from app.db.models import User
 from app.ml.model_loader import (
@@ -49,8 +51,9 @@ from app.services.model_versions import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create any missing tables so a fresh database works out of the box
-    init_db()
+    # Tables are created by Alembic; stop early with a clear
+    # message if the migrations have not been applied yet.
+    check_schema()
     yield
 
 
@@ -79,24 +82,51 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(ServiceNotReadyError)
+def service_not_ready_handler(
+    request: Request,
+    error: ServiceNotReadyError,
+):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": str(error),
+        },
+    )
+
+
 # ---------------------------------------------------------
 # Request Models
 # ---------------------------------------------------------
 
+MAX_SYMPTOM_TEXT_LENGTH = 2000
+MAX_CONFIRMED_CODES = 50
+
+
 class SymptomTextRequest(BaseModel):
-    text: str
+    text: str = Field(
+        max_length=MAX_SYMPTOM_TEXT_LENGTH,
+    )
 
 
 class SymptomConfirmationRequest(BaseModel):
-    text: str
-    confirmed_codes: list[str]
+    text: str = Field(
+        max_length=MAX_SYMPTOM_TEXT_LENGTH,
+    )
+    confirmed_codes: list[str] = Field(
+        max_length=MAX_CONFIRMED_CODES,
+    )
 
 
 class PredictionRequest(BaseModel):
     age: int = Field(ge=0, le=120)
     sex: Literal["M", "F"]
-    text: str
-    confirmed_codes: list[str]
+    text: str = Field(
+        max_length=MAX_SYMPTOM_TEXT_LENGTH,
+    )
+    confirmed_codes: list[str] = Field(
+        max_length=MAX_CONFIRMED_CODES,
+    )
 
 
 class FeedbackRequest(BaseModel):
@@ -119,7 +149,6 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(
-        min_length=8,
         max_length=128,
     )
 
@@ -154,7 +183,7 @@ def database_status():
 
         return {
             "status": "connected",
-            "database": "postgresql",
+            "database": engine.dialect.name,
         }
 
     except Exception as error:
@@ -709,6 +738,9 @@ def get_patient_history_item(
 def submit_feedback(
     request: FeedbackRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     try:
         feedback = save_feedback(
@@ -716,6 +748,7 @@ def submit_feedback(
             prediction_session_id=(
                 request.prediction_id
             ),
+            user_id=current_user.id,
             was_helpful=(
                 request.was_helpful
             ),
@@ -738,6 +771,14 @@ def submit_feedback(
                 feedback.created_at
             ),
         }
+
+    except LookupError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Prediction session was not found."
+            ),
+        ) from error
 
     except ValueError as error:
         raise HTTPException(

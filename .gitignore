@@ -29,4 +29,4 @@ Thumbs.db
 # Database files
 *.db
 *.sqlite
-*.sqlite3.pytest_cache/
+*.sqlite3

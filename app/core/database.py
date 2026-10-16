@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import settings
@@ -30,7 +30,28 @@ def get_db():
         db.close()
 
 
-def init_db():
+def check_schema():
+    """
+    Confirm that the Alembic migrations have been applied.
+
+    Tables are created by Alembic only. Creating them here as
+    well would leave the database without a migration version
+    and make "alembic upgrade head" fail afterwards.
+    """
     from app.db import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    existing_tables = set(
+        inspect(engine).get_table_names()
+    )
+
+    missing_tables = sorted(
+        set(Base.metadata.tables) - existing_tables
+    )
+
+    if missing_tables:
+        raise RuntimeError(
+            "The database schema is not up to date "
+            f"(missing tables: {missing_tables}). "
+            "Run: python -m alembic upgrade head"
+        )
+

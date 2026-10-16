@@ -79,7 +79,10 @@ ucs31-madhaparia-backend/
 │   ├── versions/
 │   │   ├── cbf545f55898_baseline_existing_schema.py
 │   │   ├── 7e65fb049ca7_add_users_table.py
-│   │   └── c789b43ef979_link_prediction_sessions_to_users.py
+│   │   ├── c789b43ef979_link_prediction_sessions_to_users.py
+│   │   ├── 15b0fe7743ef_add_symptom_catalog_tables.py
+│   │   ├── b686b7b5730a_add_model_version_tracking.py
+│   │   └── a3f1c9d27b64_add_unique_feedback_per_prediction.py
 │   │
 │   ├── env.py
 │   ├── README
@@ -90,6 +93,7 @@ ucs31-madhaparia-backend/
 │   │   ├── auth.py
 │   │   ├── config.py
 │   │   ├── database.py
+│   │   ├── errors.py
 │   │   └── security.py
 │   │
 │   ├── data/
@@ -97,7 +101,10 @@ ucs31-madhaparia-backend/
 │   │
 │   ├── db/
 │   │   ├── __init__.py
-│   │   └── models.py
+│   │   ├── create_admin.py
+│   │   ├── models.py
+│   │   ├── seed_model_version.py
+│   │   └── seed_symptom_catalog.py
 │   │
 │   ├── ml/
 │   │   ├── artifacts/
@@ -119,18 +126,23 @@ ucs31-madhaparia-backend/
 │   │   ├── auth.py
 │   │   ├── health_guidance.py
 │   │   ├── history.py
+│   │   ├── model_versions.py
 │   │   ├── prediction.py
 │   │   └── symptom_confirmation.py
 │   │
 │   └── main.py
 │
 ├── tests/
+│   ├── conftest.py
 │   ├── test_admin_access.py
 │   ├── test_authentication.py
 │   ├── test_basic_endpoints.py
+│   ├── test_end_to_end.py
 │   ├── test_history_feedback.py
 │   ├── test_nlp_confirmation.py
-│   └── test_prediction_validation.py
+│   ├── test_prediction_validation.py
+│   ├── test_service_readiness.py
+│   └── test_symptom_catalog.py
 │
 ├── .env.example
 ├── .gitignore
@@ -245,6 +257,8 @@ JWT access tokens contain:
 
 The JWT secret is loaded from the local `.env` file and is not committed to Git.
 
+`JWT_SECRET_KEY` is required. The application refuses to start if it is missing, shorter than 32 characters, or still set to a placeholder value.
+
 ---
 
 ## User Roles
@@ -287,6 +301,14 @@ role = patient
 ```
 
 The public registration endpoint does not allow a user to create an administrator account.
+
+Administrator accounts are created from the command line:
+
+```bash
+python -m app.db.create_admin admin@example.com
+```
+
+If the email already belongs to a registered user, that user is promoted to `admin` and keeps their password. Otherwise a new administrator account is created and the password is asked for interactively (or read from the `ADMIN_PASSWORD` environment variable).
 
 ---
 
@@ -381,6 +403,14 @@ Feedback can be submitted using:
 POST /feedback
 ```
 
+Feedback requires authentication. A patient can only submit feedback for their own prediction sessions.
+
+For a prediction that does not exist or belongs to another user, the API returns:
+
+```text
+404 Not Found
+```
+
 Feedback contains:
 
 - Prediction session ID
@@ -444,6 +474,26 @@ Stores:
 - Optional comment
 - Creation time
 
+### `symptoms`
+
+Stores the canonical symptom catalogue:
+
+- Symptom code
+- Display name
+- Model features
+- Kind
+- Red-flag status
+
+### `symptom_aliases`
+
+Stores the English and Kiswahili wording for each symptom.
+
+### `model_versions`
+
+Stores the trained model versions and which one is active.
+
+The `symptoms`, `symptom_aliases` and `model_versions` tables are filled by the seed commands described in the installation steps.
+
 ### `alembic_version`
 
 Stores the currently applied database migration revision.
@@ -465,23 +515,36 @@ Add users table
 
 c789b43ef979
 Link prediction sessions to users
+
+15b0fe7743ef
+Add symptom catalog tables
+
+b686b7b5730a
+Add model version tracking
+
+a3f1c9d27b64
+Add unique feedback per prediction
 ```
+
+Alembic is the only place where tables are created. The application does not create tables on startup; if the migrations have not been applied it stops with a message asking you to run `python -m alembic upgrade head`.
+
+The baseline migration creates `prediction_sessions` and `feedback` only when they are missing, so the same command works on an empty database and on a database that already contains those tables.
 
 Check the current migration:
 
-```powershell
+```bash
 python -m alembic current
 ```
 
 Apply migrations:
 
-```powershell
+```bash
 python -m alembic upgrade head
 ```
 
 Check whether model changes require another migration:
 
-```powershell
+```bash
 python -m alembic check
 ```
 
@@ -514,7 +577,17 @@ DATABASE_URL=postgresql+psycopg://user:password@host/database_name?sslmode=requi
 JWT_SECRET_KEY=replace_with_a_secure_random_secret
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+FRONTEND_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
+
+`JWT_SECRET_KEY` must be replaced with a random value of at least 32 characters. Generate one with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+`FRONTEND_ORIGINS` is a comma-separated list of the frontend addresses that are allowed to call the API (CORS).
 
 Do not commit the real `.env` file.
 
@@ -546,29 +619,37 @@ cd ucs31-madhaparia-backend
 
 ### 2. Create a virtual environment
 
-Windows:
-
-```powershell
+```bash
 python -m venv .venv
 ```
 
-Activate it:
+Activate it.
+
+Windows (PowerShell):
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
+Linux / macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+On Linux / macOS use `python3 -m venv .venv` if `python` is not available. All remaining commands are the same on every platform once the virtual environment is active.
+
 ---
 
 ### 3. Install dependencies
 
-```powershell
+```bash
 python -m pip install -r requirements.txt
 ```
 
 For development and testing:
 
-```powershell
+```bash
 python -m pip install -r requirements-dev.txt
 ```
 
@@ -588,14 +669,51 @@ from:
 .env.example
 ```
 
-and provide the real PostgreSQL connection string and JWT secret.
+Windows (PowerShell):
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Linux / macOS:
+
+```bash
+cp .env.example .env
+```
+
+Then provide the real PostgreSQL connection string and a real JWT secret (see "Environment Configuration" above). The application will not start with the placeholder secret.
 
 ---
 
 ### 5. Apply database migrations
 
-```powershell
+```bash
 python -m alembic upgrade head
+```
+
+This creates all tables, including on a completely empty database.
+
+---
+
+### 6. Load the reference data
+
+```bash
+python -m app.db.seed_symptom_catalog
+python -m app.db.seed_model_version
+```
+
+The first command loads the symptom catalogue and the English/Kiswahili aliases into the database. The second registers the bundled model as the active model version.
+
+Both commands are safe to run again.
+
+Until they have been run, `POST /nlp/map`, `POST /symptoms/confirm` and `POST /predict` return `503 Service Unavailable` with a message naming the command that is missing.
+
+---
+
+### 7. Create an administrator (optional)
+
+```bash
+python -m app.db.create_admin admin@example.com
 ```
 
 ---
@@ -604,7 +722,7 @@ python -m alembic upgrade head
 
 Start the FastAPI server:
 
-```powershell
+```bash
 python -m uvicorn app.main:app --reload
 ```
 
@@ -691,6 +809,8 @@ These endpoints require an authenticated administrator account.
 POST /feedback
 ```
 
+`POST /feedback` requires authentication and only accepts the caller's own predictions.
+
 ---
 
 ## Example Authentication Flow
@@ -757,6 +877,7 @@ Examples of protected routes:
 
 ```text
 POST /predict
+POST /feedback
 GET /history
 GET /history/{prediction_id}
 GET /auth/me
@@ -811,13 +932,37 @@ tests/
 Current test files:
 
 ```text
+conftest.py
 test_admin_access.py
 test_authentication.py
 test_basic_endpoints.py
+test_end_to_end.py
 test_history_feedback.py
 test_nlp_confirmation.py
 test_prediction_validation.py
+test_service_readiness.py
+test_symptom_catalog.py
 ```
+
+### Test database
+
+The tests never use the database configured in `.env`.
+
+They need `TEST_DATABASE_URL` to point at a PostgreSQL database that is safe to use for testing, for example a local one:
+
+Windows (PowerShell):
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/respiratory_test"
+```
+
+Linux / macOS:
+
+```bash
+export TEST_DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/respiratory_test"
+```
+
+For each run, `tests/conftest.py` creates a temporary schema inside that database, applies the Alembic migrations, seeds the symptom catalogue and model version, and drops the schema again at the end. No `.env` file and no manual seeding are needed to run the tests.
 
 The automated test suite covers:
 
@@ -881,19 +1026,33 @@ The automated test suite covers:
 ### Feedback
 
 - Feedback submission
+- Authentication requirement
+- Unknown prediction handling
 - Duplicate feedback rejection
 - Comment length validation
 
+### End-to-end
+
+- Register, login, symptom mapping, prediction, history and feedback against a real database, with nothing mocked
+
+### Service readiness and limits
+
+- `503` when the symptom catalogue has not been seeded
+- `503` when no active model version is configured
+- Symptom text length limit
+- Confirmed symptom count limit
+- Rejection of missing, placeholder or short JWT secrets
+
 Run the full suite with:
 
-```powershell
+```bash
 python -m pytest -v
 ```
 
 Latest verified result:
 
 ```text
-52 passed
+74 passed
 0 failed
 1 warning
 ```
@@ -951,7 +1110,8 @@ The API can be reproduced using:
 3. A PostgreSQL database
 4. Environment variables in `.env`
 5. Alembic migrations
-6. The included trained model artifacts
+6. The two seed commands
+7. The included trained model artifacts
 
 ---
 
@@ -965,7 +1125,7 @@ The system has several important limitations:
 - Red-flag logic is a controlled project safety mapping and is not a complete emergency triage system.
 - NLP symptom recognition is limited to the supported symptom vocabulary and aliases.
 - Older prediction records created before authentication may have no associated user ID.
-- Administrator accounts are not created through public registration.
+- Administrator accounts are not created through public registration; they are created with `python -m app.db.create_admin`.
 
 ---
 
@@ -1022,7 +1182,7 @@ Role-based access testing                COMPLETE
 Current automated test result:
 
 ```text
-52 passed
+74 passed
 0 failed
 ```
 

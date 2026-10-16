@@ -14,6 +14,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import ServiceNotReadyError
 from app.db.models import Symptom, SymptomAlias
 
 from rapidfuzz import fuzz, process
@@ -592,6 +593,21 @@ def build_confirmation_output(
     Build the structured output that can be sent to the
     frontend for symptom review and confirmation.
     """
+
+    if db is not None:
+        catalogue_is_empty = (
+            db.scalar(
+                select(SymptomAlias.id).limit(1)
+            )
+            is None
+        )
+
+        if catalogue_is_empty:
+            raise ServiceNotReadyError(
+                "The symptom catalogue has not been "
+                "loaded into the database. "
+                "Run: python -m app.db.seed_symptom_catalog"
+            )
 
     matches = find_symptoms(
         text,
