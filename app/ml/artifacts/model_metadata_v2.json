@@ -1,0 +1,22 @@
+
+{
+  "model_name": "Random Forest V2 Prototype",
+  "model_version": "v2_23class_prototype",
+  "purpose": "Experimental respiratory health awareness and symptom-based condition prediction",
+  "model_file": "rf_v2_23class_prototype.joblib",
+  "feature_schema_file": "v2_feature_schema.json",
+  "number_of_model_features": 66,
+  "number_of_symptom_features": 32,
+  "number_of_diseases": 23,
+  "model_type": "RandomForestClassifier",
+  "model_status": "experimental",
+  "clinical_validation": false,
+  "confidence_calibrated": false,
+  "active_in_backend": false,
+  "notes": [
+    "V2 uses present, absent and unknown symptom states.",
+    "COVID-19 and allergic rhinitis were added using synthetic training records.",
+    "Independent clinical validation has not been performed.",
+    "The existing V1 backend prediction flow remains active until integration is completed."
+  ]
+}
