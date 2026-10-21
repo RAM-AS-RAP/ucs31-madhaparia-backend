@@ -82,5 +82,13 @@
   "Whooping cough": {
     "display_name": "Whooping Cough (Pertussis)",
     "short_description": "A highly contagious bacterial respiratory infection that can cause repeated severe coughing fits and may last for several weeks."
+  },
+  "COVID-19": {
+    "display_name": "COVID-19",
+    "short_description": "A respiratory illness caused by the SARS-CoV-2 virus. It may cause fever, cough, sore throat, tiredness, breathing difficulties and other symptoms."
+  },
+  "Allergic rhinitis": {
+    "display_name": "Allergic Rhinitis",
+    "short_description": "An allergic reaction affecting the nose, which may cause sneezing, a runny or blocked nose, itching and watery eyes."
   }
 }

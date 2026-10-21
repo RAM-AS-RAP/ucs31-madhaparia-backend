@@ -91,7 +91,7 @@ def test_normal_prediction(
     assert data["model_version"] == "1.0"
     assert data["has_red_flag"] is False
     assert data["feature_count"] == 198
-    assert len(data["predictions"]) == 3
+    assert len(data["predictions"]) == 1
     assert "prediction_id" in data
 
     assert (

@@ -43,6 +43,13 @@ from app.services.history import (
     save_prediction_session,
 )
 from app.services.prediction import predict_top_conditions
+
+from app.ml.model_loader import V2_MODEL_VERSION
+from app.services.v2_prediction import (
+    partition_v2_symptom_features,
+    predict_v2_single,
+)
+
 from app.services.symptom_confirmation import confirm_symptoms
 
 from app.services.model_versions import (
@@ -411,17 +418,52 @@ def predict_conditions(
             get_active_model_version(db)
         )
 
-        prediction_result = (
-            predict_top_conditions(
+
+        # Choose the prediction service that matches
+        # the active database model version.
+        unsupported_model_features = []
+
+        if active_model_version.version == V2_MODEL_VERSION:
+            partition = partition_v2_symptom_features(
+                confirmation["model_features"]
+            )
+
+            unsupported_model_features = partition[
+                "unsupported_features"
+            ]
+
+            if not partition["has_supported_features"]:
+                raise ValueError(
+                    "There is not enough V2-supported symptom "
+                    "information to make a prediction. "
+                    "Please provide at least one supported "
+                    "confirmed symptom."
+                )
+
+            prediction_result = predict_v2_single(
                 age=request.age,
                 sex=request.sex,
-                symptom_features=(
-                    confirmation[
-                        "model_features"
-                    ]
-                ),
+                symptom_features=partition[
+                    "supported_features"
+                ],
             )
-        )
+
+        elif active_model_version.version == "1.0":
+            prediction_result = predict_top_conditions(
+                age=request.age,
+                sex=request.sex,
+                symptom_features=confirmation[
+                    "model_features"
+                ],
+                top_k=1,
+            )
+
+        else:
+            raise ServiceNotReadyError(
+                "The active model version is not supported "
+                "by the prediction service."
+            )
+
 
         enriched_predictions = (
             enrich_predictions(
@@ -489,6 +531,23 @@ def predict_conditions(
             ),
             "predictions": (
                 enriched_predictions
+            ),
+            **(
+                {
+                    "uncertain": prediction_result["uncertain"],
+                    "uncertainty_reasons": prediction_result[
+                        "uncertainty_reasons"
+                    ],
+                    "uncertainty_message": prediction_result[
+                        "uncertainty_message"
+                    ],
+                    "score_note": prediction_result["score_note"],
+                    "unsupported_model_features": (
+                        unsupported_model_features
+                    ),
+                }
+                if active_model_version.version == V2_MODEL_VERSION
+                else {}
             ),
             **guidance,
         }
