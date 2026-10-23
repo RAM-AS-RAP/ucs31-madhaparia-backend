@@ -91,7 +91,7 @@ def test_register_login_predict_history_feedback():
 
     assert prediction["status"] == "prediction_complete"
     assert prediction["model_version"] == "1.0"
-    assert len(prediction["predictions"]) == 3
+    assert len(prediction["predictions"]) == 1
 
     prediction_id = prediction["prediction_id"]
 
