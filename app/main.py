@@ -290,6 +290,65 @@ def confirm_recognised_symptoms(
             detail=str(error),
         ) from error
 
+@app.post("/safety/reviews")
+def create_safety_review(
+    request: SymptomConfirmationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        confirmation = confirm_symptoms(
+            text=request.text,
+            confirmed_codes=request.confirmed_codes,
+            db=db,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    if not confirmation["has_red_flag"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A safety review requires at least one "
+                "recognised and confirmed red-flag symptom."
+            ),
+        )
+
+    # This endpoint never selects or runs a prediction model.
+    assessment = build_independent_safety_assessment(confirmation)
+    guidance = get_urgent_guidance()
+
+    session = save_prediction_session(
+        db,
+        user_id=current_user.id,
+        age=None,
+        sex=None,
+        input_text=request.text,
+        confirmed_codes=confirmation["confirmed_codes"],
+        model_features=confirmation["model_features"],
+        status="urgent_review",
+        has_red_flag=True,
+        predictions=[],
+        model_version_id=None,
+        assessment=assessment,
+    )
+
+    return {
+        "prediction_id": str(session.id),
+        "status": "urgent_review",
+        "age": None,
+        "sex": None,
+        "confirmed_codes": confirmation["confirmed_codes"],
+        "model_features": confirmation["model_features"],
+        "has_red_flag": True,
+        "red_flag_symptoms": confirmation["red_flag_symptoms"],
+        "predictions": [],
+        "assessment": assessment,
+        **guidance,
+    }
 
 # ---------------------------------------------------------
 # Prediction Endpoint
