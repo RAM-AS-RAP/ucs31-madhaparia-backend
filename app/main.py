@@ -5,29 +5,31 @@ import uuid
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import (
-    get_current_user,
-    require_admin,
-)
+from app.core.auth import get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import check_schema, engine, get_db
 from app.core.errors import ServiceNotReadyError
 from app.core.security import create_access_token
 from app.db.models import User
+from app.ml.candidate_loader import CANDIDATE_MODEL_VERSION
 from app.ml.model_loader import (
+    V2_MODEL_VERSION,
+    disease_classes,
     model,
     model_features,
-    disease_classes,
 )
 from app.nlp.symptom_mapper import build_confirmation_output
-from app.services.auth import (
-    authenticate_user,
-    create_patient_user,
+from app.services.auth import authenticate_user, create_patient_user
+from app.services.candidate_prediction import (
+    assess_candidate_confirmation,
+    build_independent_safety_assessment,
+    validate_candidate_registration,
 )
+from app.services.candidate_symptom_mapping import CandidateMappingInputError
 from app.services.health_guidance import (
     enrich_predictions,
     get_prediction_guidance,
@@ -42,24 +44,18 @@ from app.services.history import (
     save_feedback,
     save_prediction_session,
 )
+from app.services.model_versions import get_active_model_version
 from app.services.prediction import predict_top_conditions
-
-from app.ml.model_loader import V2_MODEL_VERSION
+from app.services.symptom_confirmation import confirm_symptoms
 from app.services.v2_prediction import (
     partition_v2_symptom_features,
     predict_v2_single,
 )
 
-from app.services.symptom_confirmation import confirm_symptoms
-
-from app.services.model_versions import (
-    get_active_model_version,
-)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Tables are created by Alembic; stop early with a clear
-    # message if the migrations have not been applied yet.
+    # Database schema changes are managed through Alembic.
     check_schema()
     yield
 
@@ -96,9 +92,7 @@ def service_not_ready_handler(
 ):
     return JSONResponse(
         status_code=503,
-        content={
-            "detail": str(error),
-        },
+        content={"detail": str(error)},
     )
 
 
@@ -111,53 +105,37 @@ MAX_CONFIRMED_CODES = 50
 
 
 class SymptomTextRequest(BaseModel):
-    text: str = Field(
-        max_length=MAX_SYMPTOM_TEXT_LENGTH,
-    )
+    text: str = Field(max_length=MAX_SYMPTOM_TEXT_LENGTH)
 
 
 class SymptomConfirmationRequest(BaseModel):
-    text: str = Field(
-        max_length=MAX_SYMPTOM_TEXT_LENGTH,
-    )
-    confirmed_codes: list[str] = Field(
-        max_length=MAX_CONFIRMED_CODES,
-    )
+    text: str = Field(max_length=MAX_SYMPTOM_TEXT_LENGTH)
+    confirmed_codes: list[str] = Field(max_length=MAX_CONFIRMED_CODES)
 
 
 class PredictionRequest(BaseModel):
-    age: int = Field(ge=0, le=120)
+    model_config = ConfigDict(extra="forbid")
+
+    age: int = Field(ge=0, le=120, strict=True)
     sex: Literal["M", "F"]
-    text: str = Field(
-        max_length=MAX_SYMPTOM_TEXT_LENGTH,
-    )
-    confirmed_codes: list[str] = Field(
-        max_length=MAX_CONFIRMED_CODES,
-    )
+    text: str = Field(max_length=MAX_SYMPTOM_TEXT_LENGTH)
+    confirmed_codes: list[str] = Field(max_length=MAX_CONFIRMED_CODES)
 
 
 class FeedbackRequest(BaseModel):
     prediction_id: uuid.UUID
     was_helpful: bool
-    comment: str | None = Field(
-        default=None,
-        max_length=1000,
-    )
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(
-        min_length=8,
-        max_length=128,
-    )
+    password: str = Field(min_length=8, max_length=128)
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str = Field(
-        max_length=128,
-    )
+    password: str = Field(max_length=128)
 
 
 # ---------------------------------------------------------
@@ -167,9 +145,7 @@ class LoginRequest(BaseModel):
 @app.get("/")
 def root():
     return {
-        "message": (
-            "Respiratory Health Awareness API is running."
-        )
+        "message": "Respiratory Health Awareness API is running.",
     }
 
 
@@ -206,13 +182,9 @@ def model_status():
         "status": "loaded",
         "model_type": type(model).__name__,
         "feature_count": len(model_features),
-        "model_feature_count": int(
-            model.n_features_in_
-        ),
+        "model_feature_count": int(model.n_features_in_),
         "class_count": len(disease_classes),
-        "model_class_count": len(
-            model.classes_
-        ),
+        "model_class_count": len(model.classes_),
     }
 
 
@@ -220,10 +192,7 @@ def model_status():
 # Authentication Endpoints
 # ---------------------------------------------------------
 
-@app.post(
-    "/auth/register",
-    status_code=201,
-)
+@app.post("/auth/register", status_code=201)
 def register_patient(
     request: RegisterRequest,
     db: Session = Depends(get_db),
@@ -264,9 +233,7 @@ def login(
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password.",
-            headers={
-                "WWW-Authenticate": "Bearer"
-            },
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     access_token = create_access_token(
@@ -277,17 +244,13 @@ def login(
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "expires_in_minutes": (
-            settings.access_token_expire_minutes
-        ),
+        "expires_in_minutes": settings.access_token_expire_minutes,
     }
 
 
 @app.get("/auth/me")
 def get_authenticated_user(
-    current_user: User = Depends(
-        get_current_user
-    ),
+    current_user: User = Depends(get_current_user),
 ):
     return {
         "id": str(current_user.id),
@@ -306,10 +269,7 @@ def map_symptoms(
     request: SymptomTextRequest,
     db: Session = Depends(get_db),
 ):
-    return build_confirmation_output(
-        request.text,
-        db,
-    )
+    return build_confirmation_output(request.text, db)
 
 
 @app.post("/symptoms/confirm")
@@ -339,9 +299,7 @@ def confirm_recognised_symptoms(
 def predict_conditions(
     request: PredictionRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        get_current_user
-    ),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         confirmation = confirm_symptoms(
@@ -350,87 +308,120 @@ def predict_conditions(
             db=db,
         )
 
-        # -------------------------------------------------
-        # Red-flag route
-        # -------------------------------------------------
-
+        # Independent safety checks run before model selection.
         if confirmation["has_red_flag"]:
-            urgent_guidance = (
-                get_urgent_guidance()
+            urgent_guidance = get_urgent_guidance()
+            safety_assessment = build_independent_safety_assessment(
+                confirmation
             )
 
-            prediction_session = (
-                save_prediction_session(
+            prediction_session = save_prediction_session(
+                db,
+                user_id=current_user.id,
+                age=request.age,
+                sex=request.sex,
+                input_text=request.text,
+                confirmed_codes=confirmation["confirmed_codes"],
+                model_features=confirmation["model_features"],
+                status="urgent_review",
+                has_red_flag=True,
+                predictions=[],
+                model_version_id=None,
+                assessment=safety_assessment,
+            )
+
+            return {
+                "prediction_id": str(prediction_session.id),
+                "status": "urgent_review",
+                "age": request.age,
+                "sex": request.sex,
+                "confirmed_codes": confirmation["confirmed_codes"],
+                "model_features": confirmation["model_features"],
+                "has_red_flag": True,
+                "red_flag_symptoms": confirmation["red_flag_symptoms"],
+                "predictions": [],
+                "assessment": safety_assessment,
+                **urgent_guidance,
+            }
+
+        active_model_version = get_active_model_version(db)
+
+        # Candidate assessment route.
+        if active_model_version.version == CANDIDATE_MODEL_VERSION:
+            try:
+                validate_candidate_registration(active_model_version)
+
+                candidate = assess_candidate_confirmation(
+                    age=request.age,
+                    sex=request.sex,
+                    confirmation=confirmation,
+                )
+
+                if candidate["status"] == "urgent_review":
+                    guidance = get_urgent_guidance()
+                else:
+                    guidance = get_prediction_guidance()
+                    guidance["confidence_explanation"] = (
+                        candidate["assessment"]["score_note"]
+                    )
+
+                prediction_session = save_prediction_session(
                     db,
                     user_id=current_user.id,
                     age=request.age,
                     sex=request.sex,
                     input_text=request.text,
-                    confirmed_codes=(
-                        confirmation[
-                            "confirmed_codes"
-                        ]
-                    ),
-                    model_features=(
-                        confirmation[
-                            "model_features"
-                        ]
-                    ),
-                    status="urgent_review",
-                    has_red_flag=True,
-                    predictions=[],
-                    model_version_id=None,
+                    confirmed_codes=candidate["confirmed_codes"],
+                    model_features=candidate["model_features"],
+                    status=candidate["status"],
+                    has_red_flag=candidate["has_red_flag"],
+                    predictions=candidate["predictions"],
+                    model_version_id=active_model_version.id,
+                    assessment=candidate["assessment"],
                 )
-            )
 
-            return {
-                "prediction_id": str(
-                    prediction_session.id
-                ),
-                "status": "urgent_review",
-                "age": request.age,
-                "sex": request.sex,
-                "confirmed_codes": (
-                    confirmation[
-                        "confirmed_codes"
-                    ]
-                ),
-                "model_features": (
-                    confirmation[
-                        "model_features"
-                    ]
-                ),
-                "has_red_flag": True,
-                "red_flag_symptoms": (
-                    confirmation[
-                        "red_flag_symptoms"
-                    ]
-                ),
-                "predictions": [],
-                **urgent_guidance,
-            }
+                return {
+                    "prediction_id": str(prediction_session.id),
+                    "status": candidate["status"],
+                    "model_version": candidate["model_version"],
+                    "age": request.age,
+                    "sex": request.sex,
+                    "confirmed_codes": candidate["confirmed_codes"],
+                    "model_features": candidate["model_features"],
+                    "has_red_flag": candidate["has_red_flag"],
+                    "feature_count": candidate["feature_count"],
+                    "predictions": candidate["predictions"],
+                    "assessment": candidate["assessment"],
+                    **guidance,
+                }
 
-        # -------------------------------------------------
-        # Normal prediction route
-        # -------------------------------------------------
+            except CandidateMappingInputError as error:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(error),
+                ) from error
 
-        active_model_version = (
-            get_active_model_version(db)
-        )
+            except ServiceNotReadyError as error:
+                raise HTTPException(
+                    status_code=503,
+                    detail="The candidate assessment service is unavailable.",
+                ) from error
 
+            except Exception as error:
+                db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail="The candidate assessment could not be completed.",
+                ) from error
 
-        # Choose the prediction service that matches
-        # the active database model version.
+        # Existing V1/V2 prediction routes.
         unsupported_model_features = []
 
         if active_model_version.version == V2_MODEL_VERSION:
             partition = partition_v2_symptom_features(
                 confirmation["model_features"]
             )
-
-            unsupported_model_features = partition[
-                "unsupported_features"
-            ]
+            unsupported_model_features = partition["unsupported_features"]
 
             if not partition["has_supported_features"]:
                 raise ValueError(
@@ -443,18 +434,14 @@ def predict_conditions(
             prediction_result = predict_v2_single(
                 age=request.age,
                 sex=request.sex,
-                symptom_features=partition[
-                    "supported_features"
-                ],
+                symptom_features=partition["supported_features"],
             )
 
         elif active_model_version.version == "1.0":
             prediction_result = predict_top_conditions(
                 age=request.age,
                 sex=request.sex,
-                symptom_features=confirmation[
-                    "model_features"
-                ],
+                symptom_features=confirmation["model_features"],
                 top_k=1,
             )
 
@@ -464,74 +451,36 @@ def predict_conditions(
                 "by the prediction service."
             )
 
-
-        enriched_predictions = (
-            enrich_predictions(
-                prediction_result[
-                    "predictions"
-                ]
-            )
+        enriched_predictions = enrich_predictions(
+            prediction_result["predictions"]
         )
+        guidance = get_prediction_guidance()
 
-        guidance = (
-            get_prediction_guidance()
-        )
-
-        prediction_session = (
-            save_prediction_session(
-                db,
-                user_id=current_user.id,
-                age=request.age,
-                sex=request.sex,
-                input_text=request.text,
-                confirmed_codes=(
-                    confirmation[
-                        "confirmed_codes"
-                    ]
-                ),
-                model_features=(
-                    confirmation[
-                        "model_features"
-                    ]
-                ),
-                status="prediction_complete",
-                has_red_flag=False,
-                predictions=(
-                    enriched_predictions
-                ),
-                model_version_id=active_model_version.id,
-            )
+        prediction_session = save_prediction_session(
+            db,
+            user_id=current_user.id,
+            age=request.age,
+            sex=request.sex,
+            input_text=request.text,
+            confirmed_codes=confirmation["confirmed_codes"],
+            model_features=confirmation["model_features"],
+            status="prediction_complete",
+            has_red_flag=False,
+            predictions=enriched_predictions,
+            model_version_id=active_model_version.id,
         )
 
         return {
-            "prediction_id": str(
-                prediction_session.id
-            ),
+            "prediction_id": str(prediction_session.id),
             "status": "prediction_complete",
-            "model_version": (
-                active_model_version.version
-            ),
+            "model_version": active_model_version.version,
             "age": request.age,
             "sex": request.sex,
-            "confirmed_codes": (
-                confirmation[
-                    "confirmed_codes"
-                ]
-            ),
-            "model_features": (
-                confirmation[
-                    "model_features"
-                ]
-            ),
+            "confirmed_codes": confirmation["confirmed_codes"],
+            "model_features": confirmation["model_features"],
             "has_red_flag": False,
-            "feature_count": (
-                prediction_result[
-                    "feature_count"
-                ]
-            ),
-            "predictions": (
-                enriched_predictions
-            ),
+            "feature_count": prediction_result["feature_count"],
+            "predictions": enriched_predictions,
             **(
                 {
                     "uncertain": prediction_result["uncertain"],
@@ -542,9 +491,7 @@ def predict_conditions(
                         "uncertainty_message"
                     ],
                     "score_note": prediction_result["score_note"],
-                    "unsupported_model_features": (
-                        unsupported_model_features
-                    ),
+                    "unsupported_model_features": unsupported_model_features,
                 }
                 if active_model_version.version == V2_MODEL_VERSION
                 else {}
@@ -565,15 +512,9 @@ def predict_conditions(
 
 @app.get("/history")
 def get_patient_history(
-    limit: int = Query(
-        default=20,
-        ge=1,
-        le=100,
-    ),
+    limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        get_current_user
-    ),
+    current_user: User = Depends(get_current_user),
 ):
     sessions = list_prediction_sessions(
         db,
@@ -585,31 +526,21 @@ def get_patient_history(
         "count": len(sessions),
         "history": [
             {
-                "prediction_id": str(
-                    session.id
-                ),
+                "prediction_id": str(session.id),
                 "age": session.age,
                 "sex": session.sex,
-                "input_text": (
-                    session.input_text
-                ),
-                "confirmed_codes": (
-                    session.confirmed_codes
-                ),
+                "input_text": session.input_text,
+                "confirmed_codes": session.confirmed_codes,
                 "status": session.status,
-                "has_red_flag": (
-                    session.has_red_flag
-                ),
-                "predictions": (
-                    session.predictions
-                ),
-                "created_at": (
-                    session.created_at
-                ),
+                "has_red_flag": session.has_red_flag,
+                "predictions": session.predictions,
+                "assessment": session.assessment,
+                "created_at": session.created_at,
             }
             for session in sessions
         ],
     }
+
 
 # ---------------------------------------------------------
 # Admin Endpoints
@@ -617,28 +548,17 @@ def get_patient_history(
 
 @app.get("/admin/history")
 def get_admin_history(
-    limit: int = Query(
-        default=100,
-        ge=1,
-        le=500,
-    ),
+    limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_admin: User = Depends(
-        require_admin
-    ),
+    current_admin: User = Depends(require_admin),
 ):
-    sessions = list_all_prediction_sessions(
-        db,
-        limit=limit,
-    )
+    sessions = list_all_prediction_sessions(db, limit=limit)
 
     return {
         "count": len(sessions),
         "history": [
             {
-                "prediction_id": str(
-                    session.id
-                ),
+                "prediction_id": str(session.id),
                 "user_id": (
                     str(session.user_id)
                     if session.user_id
@@ -646,22 +566,13 @@ def get_admin_history(
                 ),
                 "age": session.age,
                 "sex": session.sex,
-                "input_text": (
-                    session.input_text
-                ),
-                "confirmed_codes": (
-                    session.confirmed_codes
-                ),
+                "input_text": session.input_text,
+                "confirmed_codes": session.confirmed_codes,
                 "status": session.status,
-                "has_red_flag": (
-                    session.has_red_flag
-                ),
-                "predictions": (
-                    session.predictions
-                ),
-                "created_at": (
-                    session.created_at
-                ),
+                "has_red_flag": session.has_red_flag,
+                "predictions": session.predictions,
+                "assessment": session.assessment,
+                "created_at": session.created_at,
             }
             for session in sessions
         ],
@@ -672,9 +583,7 @@ def get_admin_history(
 def get_admin_history_item(
     prediction_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_admin: User = Depends(
-        require_admin
-    ),
+    current_admin: User = Depends(require_admin),
 ):
     session = get_any_prediction_session(
         db,
@@ -684,79 +593,52 @@ def get_admin_history_item(
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Prediction session was not found."
-            ),
+            detail="Prediction session was not found.",
         )
 
     return {
         "prediction_id": str(session.id),
-        "user_id": (
-            str(session.user_id)
-            if session.user_id
-            else None
-        ),
+        "user_id": str(session.user_id) if session.user_id else None,
         "age": session.age,
         "sex": session.sex,
         "input_text": session.input_text,
-        "confirmed_codes": (
-            session.confirmed_codes
-        ),
+        "confirmed_codes": session.confirmed_codes,
         "status": session.status,
-        "has_red_flag": (
-            session.has_red_flag
-        ),
+        "has_red_flag": session.has_red_flag,
         "predictions": session.predictions,
+        "assessment": session.assessment,
         "created_at": session.created_at,
     }
 
 
 @app.get("/admin/feedback")
 def get_admin_feedback(
-    limit: int = Query(
-        default=100,
-        ge=1,
-        le=500,
-    ),
+    limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_admin: User = Depends(
-        require_admin
-    ),
+    current_admin: User = Depends(require_admin),
 ):
-    feedback_items = list_all_feedback(
-        db,
-        limit=limit,
-    )
+    feedback_items = list_all_feedback(db, limit=limit)
 
     return {
         "count": len(feedback_items),
         "feedback": [
             {
-                "feedback_id": str(
-                    item.id
-                ),
-                "prediction_id": str(
-                    item.prediction_session_id
-                ),
-                "was_helpful": (
-                    item.was_helpful
-                ),
+                "feedback_id": str(item.id),
+                "prediction_id": str(item.prediction_session_id),
+                "was_helpful": item.was_helpful,
                 "comment": item.comment,
-                "created_at": (
-                    item.created_at
-                ),
+                "created_at": item.created_at,
             }
             for item in feedback_items
         ],
     }
 
+
 @app.get("/history/{prediction_id}")
 def get_patient_history_item(
     prediction_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        get_current_user
-    ),
+    current_user: User = Depends(get_current_user),
 ):
     session = get_prediction_session(
         db,
@@ -767,9 +649,7 @@ def get_patient_history_item(
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Prediction session was not found."
-            ),
+            detail="Prediction session was not found.",
         )
 
     return {
@@ -777,14 +657,11 @@ def get_patient_history_item(
         "age": session.age,
         "sex": session.sex,
         "input_text": session.input_text,
-        "confirmed_codes": (
-            session.confirmed_codes
-        ),
+        "confirmed_codes": session.confirmed_codes,
         "status": session.status,
-        "has_red_flag": (
-            session.has_red_flag
-        ),
+        "has_red_flag": session.has_red_flag,
         "predictions": session.predictions,
+        "assessment": session.assessment,
         "created_at": session.created_at,
     }
 
@@ -797,46 +674,30 @@ def get_patient_history_item(
 def submit_feedback(
     request: FeedbackRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        get_current_user
-    ),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         feedback = save_feedback(
             db,
-            prediction_session_id=(
-                request.prediction_id
-            ),
+            prediction_session_id=request.prediction_id,
             user_id=current_user.id,
-            was_helpful=(
-                request.was_helpful
-            ),
+            was_helpful=request.was_helpful,
             comment=request.comment,
         )
 
         return {
             "status": "feedback_saved",
-            "feedback_id": str(
-                feedback.id
-            ),
-            "prediction_id": str(
-                feedback.prediction_session_id
-            ),
-            "was_helpful": (
-                feedback.was_helpful
-            ),
+            "feedback_id": str(feedback.id),
+            "prediction_id": str(feedback.prediction_session_id),
+            "was_helpful": feedback.was_helpful,
             "comment": feedback.comment,
-            "created_at": (
-                feedback.created_at
-            ),
+            "created_at": feedback.created_at,
         }
 
     except LookupError as error:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Prediction session was not found."
-            ),
+            detail="Prediction session was not found.",
         ) from error
 
     except ValueError as error:
