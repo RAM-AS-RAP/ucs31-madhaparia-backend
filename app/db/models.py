@@ -179,14 +179,14 @@ class PredictionSession(Base):
         index=True,
     )
 
-    age: Mapped[int] = mapped_column(
+    age: Mapped[int | None] = mapped_column(
         Integer,
-        nullable=False,
+        nullable=True,
     )
 
-    sex: Mapped[str] = mapped_column(
+    sex: Mapped[str | None] = mapped_column(
         String(1),
-        nullable=False,
+        nullable=True,
     )
 
     input_text: Mapped[str] = mapped_column(
