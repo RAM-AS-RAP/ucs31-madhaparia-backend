@@ -9,7 +9,6 @@ engine = create_engine(
     pool_pre_ping=True,
 )
 
-
 SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,
@@ -31,21 +30,20 @@ def get_db():
 
 
 def check_schema():
-    """
-    Confirm that the Alembic migrations have been applied.
+    """Check that tables and columns required by the ORM exist.
 
-    Tables are created by Alembic only. Creating them here as
-    well would leave the database without a migration version
-    and make "alembic upgrade head" fail afterwards.
+    This is a read-only structural check, not a complete migration,
+    column-type or constraint validation. Alembic manages schema changes.
     """
     from app.db import models  # noqa: F401
 
-    existing_tables = set(
-        inspect(engine).get_table_names()
-    )
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
 
     missing_tables = sorted(
-        set(Base.metadata.tables) - existing_tables
+        table.name
+        for table in Base.metadata.tables.values()
+        if table.name not in existing_tables
     )
 
     if missing_tables:
@@ -55,3 +53,23 @@ def check_schema():
             "Run: python -m alembic upgrade head"
         )
 
+    missing_columns = []
+
+    for table in Base.metadata.sorted_tables:
+        existing_columns = {
+            column["name"]
+            for column in inspector.get_columns(table.name)
+        }
+
+        missing_columns.extend(
+            f"{table.name}.{column.name}"
+            for column in table.columns
+            if column.name not in existing_columns
+        )
+
+    if missing_columns:
+        raise RuntimeError(
+            "The database schema is not up to date "
+            f"(missing columns: {sorted(missing_columns)}). "
+            "Run: python -m alembic upgrade head"
+        )

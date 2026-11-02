@@ -1,0 +1,116 @@
+{
+  "issue": 55,
+  "status": "pre_activation_audit_passed",
+  "checked_at_utc": "2026-11-02T13:36:08.734925+00:00",
+  "database": {
+    "migration_revision": "d94a71f26c30",
+    "assessment_column": "nullable JSONB",
+    "active_model_version": "v2_23class_prototype",
+    "candidate_model_version": "candidate_v1_research",
+    "candidate_active": false,
+    "candidate_registration_matches_verified_release": true,
+    "canonical_symptom_count": 36,
+    "catalogue_fields_match": true,
+    "transaction_read_only": true
+  },
+  "runtime_provenance": {
+    "bundle_id": "respiratory_candidate_v1-runtime-0.1.0",
+    "bundle_format_version": 1,
+    "manifest_sha256": "52ee494aedd887210a0c4ca991d94321321af0e3766ee7b63f0742867730858b",
+    "runtime_version": "0.1.0",
+    "model_version": "candidate_v1_research",
+    "schema_id": "respiratory_candidate_v1",
+    "policy_id": "candidate_v1_research_uncertainty_v1",
+    "model_sha256": "7edc3dc42570c79c67bf14f6f8c7d651d0f61324161e3836341d20f49a6f3759",
+    "schema_sha256": "1b8164ea98967070af7250c72985fb5cb5c97dfe63e80f29e13fd0fcca012c66",
+    "policy_sha256": "98ffcb2c1afca112a0974c246a519de8e525305f82c23a3c91235df009cec4eb",
+    "environment": {
+      "python": "3.11.9",
+      "packages": {
+        "numpy": "2.4.6",
+        "pandas": "3.0.6",
+        "scipy": "1.17.1",
+        "scikit-learn": "1.9.1",
+        "joblib": "1.6.0"
+      }
+    }
+  },
+  "mapping_provenance": {
+    "mapping_id": "backend_candidate_symptom_mapping_v1",
+    "mapping_sha256": "30b647681592008f01de0f1a776dce582f7d65ae84d4791f6c0b5db74a4df4e5",
+    "canonical_catalog_semantic_sha256": "3fa09d50a20f38ad3ef684240083461924ce514fb86374f431d06e9ed6e8949f",
+    "json_fingerprint_encoding": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=False",
+    "schema_id": "respiratory_candidate_v1",
+    "schema_sha256": "1b8164ea98967070af7250c72985fb5cb5c97dfe63e80f29e13fd0fcca012c66",
+    "bundle_manifest_sha256": "52ee494aedd887210a0c4ca991d94321321af0e3766ee7b63f0742867730858b"
+  },
+  "wheel_sha256": "08d31afb8934fe8ed37a573a7af032fd4f8156753f274e9cf17df7b48371d05e",
+  "reference_case_count": 13,
+  "numeric_absolute_tolerance": 1e-12,
+  "decisions_compared_exactly": true,
+  "reference_cases": [
+    {
+      "case_id": "tiredness_headache",
+      "status": "insufficient_information"
+    },
+    {
+      "case_id": "tiredness_chest_pain",
+      "status": "prediction_available"
+    },
+    {
+      "case_id": "fever_cough",
+      "status": "insufficient_information"
+    },
+    {
+      "case_id": "tiredness_only",
+      "status": "insufficient_information"
+    },
+    {
+      "case_id": "headache_only",
+      "status": "insufficient_information"
+    },
+    {
+      "case_id": "no_confirmed_symptoms",
+      "status": "insufficient_information"
+    },
+    {
+      "case_id": "unsupported_only",
+      "status": "unsupported_input"
+    },
+    {
+      "case_id": "supported_plus_unsupported",
+      "status": "unsupported_input"
+    },
+    {
+      "case_id": "safety_only_symptom",
+      "status": "safety_review_required"
+    },
+    {
+      "case_id": "supplied_safety_flag",
+      "status": "safety_review_required"
+    },
+    {
+      "case_id": "explicit_negative_evidence",
+      "status": "unsupported_input"
+    },
+    {
+      "case_id": "contradictory_symptom",
+      "status": "rejected_invalid_input"
+    },
+    {
+      "case_id": "region_without_parent",
+      "status": "rejected_invalid_input"
+    }
+  ],
+  "database_writes_performed": false,
+  "activation_performed": false,
+  "frontend_readiness": "not_verified",
+  "rollback_rehearsal": "pending",
+  "deployment_approved": false,
+  "limitations": [
+    "Reference cases verify software behaviour, not diagnostic accuracy.",
+    "The canonical catalogue check does not audit every NLP alias.",
+    "This report does not verify installed wheel module bytes.",
+    "Frontend compatibility and activation approval remain separate."
+  ]
+}
