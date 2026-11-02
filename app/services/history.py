@@ -1,4 +1,5 @@
 import uuid
+from copy import deepcopy
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -20,26 +21,31 @@ def save_prediction_session(
     has_red_flag: bool,
     predictions: list[dict],
     model_version_id: uuid.UUID | None = None,
+    assessment: dict | None = None,
 ) -> PredictionSession:
     session = PredictionSession(
         user_id=user_id,
         age=age,
         sex=sex,
         input_text=input_text,
-        confirmed_codes=confirmed_codes,
-        model_features=model_features,
+        confirmed_codes=deepcopy(confirmed_codes),
+        model_features=deepcopy(model_features),
         status=status,
         has_red_flag=has_red_flag,
-        predictions=predictions,
+        predictions=deepcopy(predictions),
         model_version_id=model_version_id,
+        assessment=deepcopy(assessment),
     )
 
-    db.add(session)
-    db.commit()
+    try:
+        db.add(session)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
     db.refresh(session)
-
     return session
-
 
 def get_prediction_session(
     db: Session,

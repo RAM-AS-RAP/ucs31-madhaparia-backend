@@ -221,6 +221,11 @@ class PredictionSession(Base):
         default=list,
     )
 
+    assessment: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

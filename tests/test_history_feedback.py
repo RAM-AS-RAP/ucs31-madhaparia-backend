@@ -70,6 +70,7 @@ def make_fake_prediction(
                 "description": "Test description.",
             }
         ],
+        assessment=None,
         created_at=datetime.now(timezone.utc),
     )
 
