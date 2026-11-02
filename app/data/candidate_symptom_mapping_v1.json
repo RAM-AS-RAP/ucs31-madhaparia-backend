@@ -1,0 +1,105 @@
+{
+  "mapping_id": "backend_candidate_symptom_mapping_v1",
+  "schema_id": "respiratory_candidate_v1",
+  "schema_sha256": "1b8164ea98967070af7250c72985fb5cb5c97dfe63e80f29e13fd0fcca012c66",
+  "canonical_catalog_sha256": "e8d2793a1e3d25aa442742831e2dca7b2a483c42971576daffefe21df1257eac",
+  "canonical_catalog_semantic_sha256": "3fa09d50a20f38ad3ef684240083461924ce514fb86374f431d06e9ed6e8949f",
+  "input_contract": "Server-produced confirmed canonical symptoms; not raw text or the V2 feature list.",
+  "supported": {
+    "fever": ["E_91"],
+    "chills": ["E_94"],
+    "cough": ["E_201"],
+    "intense_coughing_fits": ["E_203"],
+    "vomiting_after_coughing": ["E_166"],
+    "productive_cough": ["E_77"],
+    "coughing_blood": ["E_45"],
+    "shortness_of_breath": ["E_66"],
+    "night_breathlessness": ["E_67"],
+    "wheezing": ["E_214"],
+    "wheeze_after_coughing": ["E_112"],
+    "stridor": ["E_194"],
+    "difficulty_swallowing": ["E_65"],
+    "sore_throat": ["E_97"],
+    "nasal_discharge": ["E_182"],
+    "loss_of_smell": ["E_103"],
+    "itchy_nose_throat": ["E_169"],
+    "headache": ["E_53", "head_region_pain"],
+    "chest_pain": ["E_53", "chest_region_pain"],
+    "chest_pain_at_rest": ["E_14"],
+    "worse_lying_down": ["E_217"],
+    "worse_with_exertion": ["E_218"],
+    "tiredness": ["E_89"],
+    "activity_fatigue": ["E_88"]
+  },
+  "requires_clarification": {
+    "drooling": {
+      "unasserted_concepts": ["E_190"],
+      "required_meaning": "More saliva production than usual; drooling alone does not establish increased production."
+    },
+    "hoarse_voice": {
+      "unasserted_concepts": ["E_212"],
+      "required_meaning": "A deeper, softer or hoarse voice; an unspecified voice change is broader."
+    },
+    "runny_blocked_nose": {
+      "unasserted_concepts": ["E_181"],
+      "required_meaning": "Nasal congestion or a clear runny nose; the combined confirmation label does not establish which alternative or discharge characteristic applies."
+    },
+    "itchy_eyes": {
+      "unasserted_concepts": ["E_170"],
+      "required_meaning": "Severe itching in one or both eyes."
+    },
+    "pain_deep_breath": {
+      "unasserted_concepts": ["E_220"],
+      "required_meaning": "Pain increased by deep inspiration."
+    },
+    "muscle_aches": {
+      "unasserted_concepts": ["E_144"],
+      "required_meaning": "Diffuse or widespread muscle pain."
+    },
+    "heavy_sweating": {
+      "unasserted_concepts": ["E_50"],
+      "required_meaning": "Significantly increased sweating compared with usual."
+    },
+    "loss_of_appetite": {
+      "unasserted_concepts": ["E_161"],
+      "required_meaning": "Recent appetite loss or becoming full more quickly than usual."
+    },
+    "weight_loss": {
+      "unasserted_concepts": ["E_162"],
+      "required_meaning": "Involuntary weight loss over the last three months."
+    }
+  },
+  "safety_only": [
+    "blue_lips",
+    "confusion",
+    "fainting"
+  ],
+  "expected_red_flag_codes": [
+    "coughing_blood",
+    "shortness_of_breath",
+    "stridor",
+    "drooling",
+    "chest_pain_at_rest",
+    "blue_lips",
+    "confusion",
+    "fainting"
+  ],
+  "rules": {
+    "unreported_concepts": "unknown",
+    "rejected_suggestions": "not_negative_evidence",
+    "unmatched_wording": "preserve_without_inventing_features",
+    "clarification_required_symptoms": "preserve_as_unsupported_input",
+    "safety_flags": "preserve_independently_of_numerical_mapping",
+    "regional_pain": "encode_region_and_general_pain_parent_without_exact_location",
+    "reporting_units": "use_verified_runtime_implementation",
+    "automatic_parent_inference": "only_the_required_E_53_parent_for_headache_and_chest_pain"
+  },
+  "notes": [
+    "Supported mappings require confirmation of the reviewed canonical label, including its stated qualifiers.",
+    "Broad or fuzzy aliases are recognition suggestions, not independently confirmed evidence.",
+    "This definition does not alter the existing V1/V2 catalogue or mappings.",
+    "Clarification-required codes remain unsupported even if a particular text phrase might contain additional detail; interpreting that detail is outside this mapper.",
+    "Sneezing is absent from the current backend catalogue and remains unmatched wording unless explicitly supported by a later catalogue change.",
+    "This issue does not implement follow-up questions or clinical validation."
+  ]
+}
