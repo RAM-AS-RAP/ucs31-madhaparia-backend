@@ -1,0 +1,3 @@
+# Install after the backend dependencies:
+# python -m pip install --no-deps --require-hashes -r requirements-candidate.txt
+./app/ml/artifacts/candidate_v1/respiratory_candidate_runtime-0.1.0-py3-none-any.whl --hash=sha256:08d31afb8934fe8ed37a573a7af032fd4f8156753f274e9cf17df7b48371d05e

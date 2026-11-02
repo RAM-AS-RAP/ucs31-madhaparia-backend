@@ -1,0 +1,2 @@
+# Preserve exact bytes of the verified ML release records.
+docs/candidate_runtime_release/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
