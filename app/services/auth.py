@@ -2,6 +2,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.profile_validation import (
+    normalise_full_name,
+    normalise_phone_number,
+)
 from app.core.security import hash_password, verify_password
 from app.db.models import User
 
@@ -25,8 +29,13 @@ def create_patient_user(
     db: Session,
     email: str,
     password: str,
+    *,
+    full_name: str | None = None,
+    phone_number: str | None = None,
 ) -> User:
     email = normalise_email(email)
+    full_name = normalise_full_name(full_name)
+    phone_number = normalise_phone_number(phone_number)
 
     if get_user_by_email(db, email) is not None:
         raise ValueError(
@@ -35,6 +44,8 @@ def create_patient_user(
 
     user = User(
         email=email,
+        full_name=full_name,
+        phone_number=phone_number,
         password_hash=hash_password(password),
         role="patient",
     )
@@ -45,6 +56,7 @@ def create_patient_user(
         db.commit()
     except IntegrityError as error:
         db.rollback()
+
         raise ValueError(
             "An account with this email already exists."
         ) from error
