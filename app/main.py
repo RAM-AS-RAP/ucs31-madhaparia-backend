@@ -5,7 +5,13 @@ import uuid
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -51,7 +57,10 @@ from app.services.v2_prediction import (
     partition_v2_symptom_features,
     predict_v2_single,
 )
-
+from app.core.profile_validation import (
+    normalise_full_name,
+    normalise_phone_number,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -132,6 +141,51 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
+    # Older API clients may omit these fields.
+    # The new registration form will require a full name.
+    full_name: str | None = None
+    phone_number: str | None = None
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def validate_full_name(cls, value):
+        return normalise_full_name(value)
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def validate_phone_number(cls, value):
+        return normalise_phone_number(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value):
+        if not value.strip():
+            raise ValueError(
+                "Password must not contain only spaces."
+            )
+
+        return value
+
+
+class ProfileUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str | None = None
+    phone_number: str | None = None
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def validate_full_name(cls, value):
+        if value is None:
+            raise ValueError("Full name cannot be empty.")
+
+        return normalise_full_name(value)
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def validate_phone_number(cls, value):
+        return normalise_phone_number(value)
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -197,16 +251,27 @@ def register_patient(
     request: RegisterRequest,
     db: Session = Depends(get_db),
 ):
+    profile = {}
+
+    if request.full_name is not None:
+        profile["full_name"] = request.full_name
+
+    if request.phone_number is not None:
+        profile["phone_number"] = request.phone_number
+
     try:
         user = create_patient_user(
             db,
             email=str(request.email),
             password=request.password,
+            **profile,
         )
 
         return {
             "id": str(user.id),
             "email": user.email,
+            "full_name": getattr(user, "full_name", None),
+            "phone_number": getattr(user, "phone_number", None),
             "role": user.role,
             "created_at": user.created_at,
         }
@@ -255,9 +320,37 @@ def get_authenticated_user(
     return {
         "id": str(current_user.id),
         "email": current_user.email,
+        "full_name": getattr(current_user, "full_name", None),
+        "phone_number": getattr(current_user, "phone_number", None),
         "role": current_user.role,
         "created_at": current_user.created_at,
     }
+
+
+@app.patch("/auth/me")
+def update_authenticated_user(
+    request: ProfileUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    changes = request.model_dump(exclude_unset=True)
+
+    if not changes:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide a full name or phone number to update.",
+        )
+
+    if "full_name" in changes:
+        current_user.full_name = changes["full_name"]
+
+    if "phone_number" in changes:
+        current_user.phone_number = changes["phone_number"]
+
+    db.commit()
+    db.refresh(current_user)
+
+    return get_authenticated_user(current_user)
 
 
 # ---------------------------------------------------------

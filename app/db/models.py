@@ -40,6 +40,16 @@ class User(Base):
         nullable=False,
     )
 
+    full_name: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    phone_number: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+    )
+
     password_hash: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
