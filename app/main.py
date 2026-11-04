@@ -4,6 +4,8 @@ import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import JSONResponse
 from pydantic import (
     BaseModel,
@@ -61,6 +63,7 @@ from app.core.profile_validation import (
     normalise_full_name,
     normalise_phone_number,
 )
+from app.password_reset_routes import router as password_reset_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -91,7 +94,25 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Retry-After"],
 )
+
+app.include_router(password_reset_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, error: RequestValidationError):
+    if request.url.path.startswith("/auth/password-reset/"):
+        # Never echo rejected codes or passwords in validation responses.
+        return JSONResponse(
+            status_code=422,
+            content={"detail": [
+                {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+                for item in error.errors()
+            ]},
+            headers={"Cache-Control": "no-store"},
+        )
+    return await request_validation_exception_handler(request, error)
 
 
 @app.exception_handler(ServiceNotReadyError)
@@ -304,6 +325,7 @@ def login(
     access_token = create_access_token(
         user_id=str(user.id),
         role=user.role,
+        auth_version=getattr(user, "auth_version", 0),
     )
 
     return {

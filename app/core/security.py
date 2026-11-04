@@ -20,6 +20,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 def create_access_token(
     user_id: str,
     role: str,
+    auth_version: int = 0,
 ) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(
         minutes=settings.access_token_expire_minutes
@@ -28,6 +29,7 @@ def create_access_token(
     payload = {
         "sub": user_id,
         "role": role,
+        "auth_version": auth_version,
         "exp": expires_at,
     }
 

@@ -60,6 +60,7 @@ def test_database():
     admin_engine = create_engine(
         TEST_DATABASE_URL,
         isolation_level="AUTOCOMMIT",
+        pool_pre_ping=True,
     )
 
     with admin_engine.connect() as connection:
