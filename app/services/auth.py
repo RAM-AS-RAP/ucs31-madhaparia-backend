@@ -8,6 +8,7 @@ from app.core.profile_validation import (
 )
 from app.core.security import hash_password, verify_password
 from app.db.models import User
+from app.services.account_status import AccountAccessRestricted, account_can_sign_in
 
 
 def normalise_email(email: str) -> str:
@@ -85,4 +86,7 @@ def authenticate_user(
     ):
         return None
 
+    if not account_can_sign_in(user):
+        # Reveal availability only after the supplied password is verified.
+        raise AccountAccessRestricted(blocked=getattr(user, "is_blocked", False) is True)
     return user

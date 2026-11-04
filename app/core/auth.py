@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.db.models import User
+from app.services.account_status import account_can_sign_in
 
 
 bearer_scheme = HTTPBearer(
@@ -62,7 +63,7 @@ def get_current_user(
         user_uuid,
     )
 
-    if user is None:
+    if user is None or not account_can_sign_in(user):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account not found.",

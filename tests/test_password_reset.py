@@ -122,7 +122,10 @@ def test_code_is_hashed_and_not_exposed_in_the_response(recovery):
         assert row.code_digest != code
         assert len(row.code_digest) == 64
         assert row.email_key != email
-    assert code not in recovery.client.get("/openapi.json").text
+    # Check the recovery response schema, not unrelated numeric API limits.
+    schema = recovery.client.get("/openapi.json").json()
+    properties = schema["components"]["schemas"]["PasswordResetRequested"]["properties"]
+    assert set(properties) == {"challenge_id", "expires_in_seconds", "resend_after_seconds", "message"}
 
 
 def test_wrong_code_cannot_change_password_or_authenticate(recovery):
