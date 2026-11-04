@@ -288,7 +288,7 @@ def test_login_success(
     monkeypatch.setattr(
         main_module,
         "create_access_token",
-        lambda user_id, role: (
+        lambda user_id, role, auth_version=0: (
             "test-access-token"
         ),
     )

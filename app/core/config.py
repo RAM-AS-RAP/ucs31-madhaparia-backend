@@ -1,4 +1,6 @@
-from pydantic import field_validator
+from typing import Literal
+
+from pydantic import EmailStr, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +21,14 @@ class Settings(BaseSettings):
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from_email: EmailStr | None = None
+    smtp_from_name: str = "RespiraCare"
+    smtp_security: Literal["starttls", "ssl"] = "starttls"
+    smtp_timeout_seconds: int = Field(default=10, ge=1, le=30)
     frontend_origins: str = (
         "http://localhost:5173,"
         "http://127.0.0.1:5173"
@@ -29,6 +39,11 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("smtp_from_email", mode="before")
+    @classmethod
+    def empty_sender_is_unconfigured(cls, value):
+        return value.strip() or None if isinstance(value, str) else value
 
     @field_validator("jwt_secret_key")
     @classmethod

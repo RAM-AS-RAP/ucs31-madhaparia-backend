@@ -71,6 +71,18 @@ def get_current_user(
             },
         )
 
+    token_version = payload.get("auth_version", 0)
+
+    if (
+        type(token_version) is not int
+        or token_version != getattr(user, "auth_version", 0)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return user
 
 def require_admin(

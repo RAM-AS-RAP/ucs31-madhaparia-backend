@@ -55,6 +55,13 @@ class User(Base):
         nullable=False,
     )
 
+    auth_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
     role: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
@@ -71,6 +78,42 @@ class User(Base):
     prediction_sessions: Mapped[list["PredictionSession"]] = relationship(
         back_populates="user",
     )
+
+class PasswordResetChallenge(Base):
+    __tablename__ = "password_reset_challenges"
+
+    __table_args__ = (
+        CheckConstraint("attempts >= 0", name="ck_password_reset_attempts"),
+    )
+
+    email_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, unique=True,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+    code_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    auth_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    language: Mapped[str] = mapped_column(String(2), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PasswordResetRateLimit(Base):
+    __tablename__ = "password_reset_rate_limits"
+
+    __table_args__ = (
+        CheckConstraint("request_count >= 0", name="ck_password_reset_request_count"),
+    )
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    next_allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
 
 class ModelVersion(Base):
     __tablename__ = "model_versions"
