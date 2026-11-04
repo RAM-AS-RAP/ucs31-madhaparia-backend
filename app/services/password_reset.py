@@ -19,6 +19,7 @@ from app.core.security import hash_password
 from app.db.models import PasswordResetChallenge, PasswordResetRateLimit, User
 from app.services import email_delivery
 from app.services.auth import get_user_by_email, normalise_email
+from app.services.account_status import account_can_sign_in
 
 
 CODE_TTL_SECONDS = 600
@@ -123,6 +124,8 @@ def request_password_reset(db: Session, email: str, language: str, client_host: 
         ).with_for_update()
     )
     user = get_user_by_email(db, email)
+    if user is not None and not account_can_sign_in(user):
+        user = None
     challenge_id = uuid.uuid4()
     code = _new_code()
     values = {
@@ -190,7 +193,7 @@ def complete_password_reset(
         _reject(db, "attempts_exhausted" if exhausted else "invalid_code")
 
     user = db.scalar(select(User).where(User.id == challenge.user_id).with_for_update())
-    if user is None or challenge.auth_version != user.auth_version:
+    if user is None or not account_can_sign_in(user) or challenge.auth_version != user.auth_version:
         challenge.consumed_at = now
         challenge.code_digest = None
         _reject(db, "invalid_code")

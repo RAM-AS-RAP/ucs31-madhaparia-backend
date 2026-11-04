@@ -32,6 +32,7 @@ from app.ml.model_loader import (
 )
 from app.nlp.symptom_mapper import build_confirmation_output
 from app.services.auth import authenticate_user, create_patient_user
+from app.services.account_status import AccountAccessRestricted
 from app.services.candidate_prediction import (
     assess_candidate_confirmation,
     build_independent_safety_assessment,
@@ -64,6 +65,7 @@ from app.core.profile_validation import (
     normalise_phone_number,
 )
 from app.password_reset_routes import router as password_reset_router
+from app.admin_user_routes import router as admin_user_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -98,11 +100,12 @@ app.add_middleware(
 )
 
 app.include_router(password_reset_router)
+app.include_router(admin_user_router)
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, error: RequestValidationError):
-    if request.url.path.startswith("/auth/password-reset/"):
+    if request.url.path.startswith(("/auth/password-reset/", "/admin/users")):
         # Never echo rejected codes or passwords in validation responses.
         return JSONResponse(
             status_code=422,
@@ -309,11 +312,18 @@ def login(
     request: LoginRequest,
     db: Session = Depends(get_db),
 ):
-    user = authenticate_user(
-        db,
-        email=str(request.email),
-        password=request.password,
-    )
+    try:
+        user = authenticate_user(
+            db,
+            email=str(request.email),
+            password=request.password,
+        )
+    except AccountAccessRestricted as error:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": error.code, "message": str(error)},
+            headers={"Cache-Control": "no-store"},
+        ) from error
 
     if user is None:
         raise HTTPException(

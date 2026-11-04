@@ -62,6 +62,13 @@ class User(Base):
         server_default="0",
     )
 
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true",
+    )
+    is_blocked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false",
+    )
+
     role: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
@@ -78,6 +85,19 @@ class User(Base):
     prediction_sessions: Mapped[list["PredictionSession"]] = relationship(
         back_populates="user",
     )
+
+class AdminAccountAction(Base):
+    __tablename__ = "admin_account_actions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    # No target FK: retain the action reference after deleting the account.
+    target_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
 
 class PasswordResetChallenge(Base):
     __tablename__ = "password_reset_challenges"
