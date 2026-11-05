@@ -66,6 +66,8 @@ from app.core.profile_validation import (
 )
 from app.password_reset_routes import router as password_reset_router
 from app.admin_user_routes import router as admin_user_router
+from app.admin_system_routes import router as admin_system_router
+from app.services.system_management import apply_disease_information, record_mapping_event
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -101,11 +103,12 @@ app.add_middleware(
 
 app.include_router(password_reset_router)
 app.include_router(admin_user_router)
+app.include_router(admin_system_router)
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, error: RequestValidationError):
-    if request.url.path.startswith(("/auth/password-reset/", "/admin/users")):
+    if request.url.path.startswith(("/auth/password-reset/", "/admin/")):
         # Never echo rejected codes or passwords in validation responses.
         return JSONResponse(
             status_code=422,
@@ -394,7 +397,13 @@ def map_symptoms(
     request: SymptomTextRequest,
     db: Session = Depends(get_db),
 ):
-    return build_confirmation_output(request.text, db)
+    try:
+        output = build_confirmation_output(request.text, db)
+    except Exception:
+        record_mapping_event(db=db)
+        raise
+    record_mapping_event(output, db=db)
+    return output
 
 
 @app.post("/symptoms/confirm")
@@ -541,6 +550,8 @@ def predict_conditions(
                     confirmation=confirmation,
                 )
 
+                candidate = {**candidate, "predictions": apply_disease_information(candidate["predictions"], db)}
+
                 if candidate["status"] == "urgent_review":
                     guidance = get_urgent_guidance()
                 else:
@@ -638,6 +649,7 @@ def predict_conditions(
         enriched_predictions = enrich_predictions(
             prediction_result["predictions"]
         )
+        enriched_predictions = apply_disease_information(enriched_predictions, db)
         guidance = get_prediction_guidance()
 
         prediction_session = save_prediction_session(

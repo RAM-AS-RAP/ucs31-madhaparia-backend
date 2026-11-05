@@ -17,6 +17,7 @@ from app.services.candidate_symptom_mapping import CandidateMappingInputError
 @pytest.fixture
 def context(monkeypatch):
     db = Mock()
+    monkeypatch.setattr(main, "apply_disease_information", lambda predictions, db: predictions)
     user = SimpleNamespace(id=uuid.uuid4(), role="patient")
     registration = SimpleNamespace(
         id=uuid.uuid4(),
