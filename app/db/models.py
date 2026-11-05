@@ -340,6 +340,12 @@ class PredictionSession(Base):
 class Feedback(Base):
     __tablename__ = "feedback"
 
+    review_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", server_default="pending")
+    review_note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
     __table_args__ = (
         UniqueConstraint(
             "prediction_session_id",
@@ -385,6 +391,9 @@ class Feedback(Base):
 
 class Symptom(Base):
     __tablename__ = "symptoms"
+
+    review_note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -485,3 +494,34 @@ class SymptomAlias(Base):
     symptom: Mapped["Symptom"] = relationship(
         back_populates="aliases",
     )
+
+
+class DiseaseInformation(Base):
+    __tablename__ = "disease_information"
+
+    condition: Mapped[str] = mapped_column(String(255), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    short_description: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class AdminSystemActivity(Base):
+    __tablename__ = "admin_system_activity"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class NlpMappingEvent(Base):
+    __tablename__ = "nlp_mapping_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    recognised_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unmatched_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Deliberately omit patient text, identities and exception messages.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)

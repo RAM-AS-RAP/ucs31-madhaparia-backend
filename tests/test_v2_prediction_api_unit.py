@@ -89,6 +89,7 @@ class TestPredictionApiRouting(unittest.TestCase):
             ),
         ]
 
+        self.patchers.append(patch.object(main, "apply_disease_information", side_effect=lambda predictions, db: predictions))
         self.mocks = [
             patcher.start()
             for patcher in self.patchers
