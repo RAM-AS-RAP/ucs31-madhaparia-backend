@@ -1,2 +1,6 @@
 # Preserve exact bytes of the verified ML release records.
 docs/candidate_runtime_release/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# Preserve the hash-verified V3 model and frozen policy on every platform.
+app/ml/artifacts/v3_partial_evidence.json -text
+app/ml/artifacts/research_selection_policy.json -text

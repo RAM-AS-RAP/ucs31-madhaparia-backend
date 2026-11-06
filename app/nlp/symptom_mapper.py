@@ -7,6 +7,7 @@ stored in the NLP folder.
 """
 
 import json
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -18,9 +19,12 @@ from app.core.errors import ServiceNotReadyError
 from app.db.models import Symptom, SymptomAlias
 
 from rapidfuzz import fuzz, process
+from app.nlp.reported_context import EXTRA_SYMPTOMS, aliases as context_aliases, report_context, precise_features, qualifying_safety_matches
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MAPPER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+CONTEXT_RULES_SHA256 = hashlib.sha256(Path(__file__).with_name('reported_context.py').read_bytes()).hexdigest()
 
 ENGLISH_ALIASES_PATH = (
     PROJECT_ROOT
@@ -50,6 +54,7 @@ FILLER_WORDS = {
     "have",
     "has",
     "having",
+    "had",
     "a",
     "an",
     "the",
@@ -65,12 +70,62 @@ FILLER_WORDS = {
     "feeling",
     "with",
     "also",
+    "for",
+    "since",
+    "days",
+    "day",
+    "weeks",
+    "week",
+    "months",
+    "month",
+    "yesterday",
+    "today",
+    "few",
+    "some",
+    "now",
+    "still",
+    "dry",
+    "wet",
+    "no",
+    "not",
+    "never",
+    "without",
+    "don't",
+    "dont",
+    "doesn't",
+    "didn't",
+    "was",
+    "were",
+    "been",
+    "being",
+    "did",
+    "does",
+    "do",
+    "while",
+    "whether",
+    "sure",
+    "can",
+    "cannot",
+    "can't",
+    "could",
+    "should",
+    "would",
     "nina",
     "niko",
     "na",
     "lakini",
     "kuwa",
     "sana",
+    "siku",
+    "wiki",
+    "miezi",
+    "jana",
+    "asubuhi",
+    "tangu",
+    "kwa",
+    "sina",
+    "hana",
+    "hakuna",
 }
 
 def load_json(path):
@@ -171,6 +226,8 @@ def build_alias_index(
                     }
                 )
 
+    existing = {(a['code'], a['alias']) for a in alias_index}
+    alias_index.extend(a for a in context_aliases() if (a['code'], a['alias']) not in existing)
     alias_index.sort(
         key=lambda item: len(
             item["alias"]
@@ -409,6 +466,13 @@ def find_symptoms(
     # Fuzzy matching
     # -------------------------
 
+    # A long, slightly misspelled safety phrase must not be hidden by its
+    # shorter exact generic-pain match.
+    for specific in qualifying_safety_matches(normalized_text, alias_index, matched_codes):
+        occupied_spans.append(specific.pop('_span'))
+        matched_codes.add(specific['code'])
+        matches.append(specific)
+
     fuzzy_matches = (
         find_fuzzy_matches(
             normalized_text,
@@ -487,6 +551,7 @@ def find_unmatched_text(
             word
             for word in words
             if word not in FILLER_WORDS
+            and not word.isdigit()
         ]
 
         if not meaningful_words:
@@ -662,6 +727,7 @@ def build_confirmation_output(
             for entry in canonical_symptoms
         }
 
+    canonical_index.update(EXTRA_SYMPTOMS)
     recognised_symptoms = []
 
     for match in matches:
@@ -708,11 +774,30 @@ def build_confirmation_output(
             }
         )
 
+    for symptom in recognised_symptoms:
+        symptom.update(report_context(text, symptom['matched_text'], symptom['code'], alias_index, matches))
+        symptom['features'] = precise_features(symptom)
+        symptom['context_only'] = not bool(symptom['features'])
+
     has_red_flag = any(
         symptom["is_red_flag"]
+        and symptom['status'] != 'absent'
+        and symptom['reported_subject'] != 'other_person'
         for symptom
         in recognised_symptoms
     )
+
+    catalogue = {
+        'symptoms': [{key: value.get(key) for key in ['code', 'display_name', 'features', 'kind', 'is_red_flag']}
+                     for _, value in sorted(canonical_index.items())],
+        'aliases': sorted(alias_index, key=lambda a: (a['code'], a['language'], a['alias'])),
+    }
+    provenance = {
+        'mapping_id': 'awareness_context_v2',
+        'catalogue_sha256': hashlib.sha256(json.dumps(catalogue, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest(),
+        'mapper_sha256': MAPPER_SHA256,
+        'context_rules_sha256': CONTEXT_RULES_SHA256,
+    }
 
     return {
         "input_text": text,
@@ -721,6 +806,8 @@ def build_confirmation_output(
         ),
         "unmatched_wording": suggestions,
         "has_red_flag": has_red_flag,
+        "mapping_version": 'awareness_context_v2',
+        'mapping_provenance': provenance,
         "requires_confirmation": (
             bool(recognised_symptoms)
             or bool(suggestions)

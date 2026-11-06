@@ -13,22 +13,21 @@ from pydantic import (
     EmailStr,
     Field,
     field_validator,
+    model_validator,
 )
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.auth import get_current_user, require_admin
 from app.core.config import settings
-from app.core.database import check_schema, engine, get_db
+from app.core.database import check_schema, engine, get_db, SchemaNotReadyError
 from app.core.errors import ServiceNotReadyError
 from app.core.security import create_access_token
 from app.db.models import User
 from app.ml.candidate_loader import CANDIDATE_MODEL_VERSION
 from app.ml.model_loader import (
     V2_MODEL_VERSION,
-    disease_classes,
-    model,
-    model_features,
 )
 from app.nlp.symptom_mapper import build_confirmation_output
 from app.services.auth import authenticate_user, create_patient_user
@@ -54,9 +53,14 @@ from app.services.history import (
     save_prediction_session,
 )
 from app.services.model_versions import get_active_model_version
-from app.services.prediction import predict_top_conditions
 from app.services.symptom_confirmation import confirm_symptoms
+from app.services.awareness import (
+    MODEL_VERSION as AWARENESS_VERSION, assess as assess_awareness,
+    bundle as awareness_bundle, public_assessment, selection_policy,
+    digest_json, SCHEMA_ID,
+)
 from app.services.v2_prediction import (
+    get_v2_bundle,
     partition_v2_symptom_features,
     predict_v2_single,
 )
@@ -67,17 +71,40 @@ from app.core.profile_validation import (
 from app.password_reset_routes import router as password_reset_router
 from app.admin_user_routes import router as admin_user_router
 from app.admin_system_routes import router as admin_system_router
-from app.services.system_management import apply_disease_information, record_mapping_event
+from app.services.system_management import apply_disease_information, apply_awareness_information, record_mapping_event
+
+
+def predict_top_conditions(*args, **kwargs):
+    # Legacy inference must not prevent the static safety endpoint from starting.
+    from app.services.prediction import predict_top_conditions as legacy_predict
+    return legacy_predict(*args, **kwargs)
+
+
+def refresh_schema_state(application):
+    try:
+        check_schema()
+        application.state.schema_ready = True
+    except (SQLAlchemyError, SchemaNotReadyError):
+        application.state.schema_ready = False
+    return application.state.schema_ready
+
+
+def require_database_schema(request: Request):
+    if request.url.path in {'/', '/health', '/safety/check', '/nlp/map'}:
+        return
+    if not getattr(request.app.state, 'schema_ready', True) and not refresh_schema_state(request.app):
+        raise HTTPException(status_code=503, detail='Database/schema not ready. Safety guidance remains available; check the database and Alembic migrations.')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Database schema changes are managed through Alembic.
-    check_schema()
+    # Static warnings remain available before database/schema readiness.
+    app.state.schema_ready = False
     yield
 
 
 app = FastAPI(
     lifespan=lifespan,
+    dependencies=[Depends(require_database_schema)],
     title=settings.app_name,
     version="0.1.0",
     description=(
@@ -132,6 +159,12 @@ def service_not_ready_handler(
     )
 
 
+@app.exception_handler(SQLAlchemyError)
+def database_unavailable_handler(request: Request, error: SQLAlchemyError):
+    request.app.state.schema_ready = False
+    return JSONResponse(status_code=503, content={'detail': 'Database service unavailable. A save outcome could not be confirmed; check history before retrying. Static safety guidance remains available.'})
+
+
 # ---------------------------------------------------------
 # Request Models
 # ---------------------------------------------------------
@@ -144,9 +177,43 @@ class SymptomTextRequest(BaseModel):
     text: str = Field(max_length=MAX_SYMPTOM_TEXT_LENGTH)
 
 
+class SymptomCorrection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    code: str = Field(max_length=100)
+    status: Literal['present', 'absent', 'unknown']
+    subject: Literal['patient_or_unspecified', 'other_person']
+
+
+class SymptomDuration(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    code: str = Field(max_length=100)
+    days: int | None = Field(default=None, ge=0, le=3650, strict=True)
+    text: str | None = Field(default=None, max_length=100)
+    amount: int | None = Field(default=None, ge=0, le=3650, strict=True)
+    unit: Literal['days', 'weeks', 'months'] = 'days'
+    unknown: bool = Field(default=False, strict=True)
+
+    @model_validator(mode='after')
+    def compatible_units(self):
+        if self.unknown and (self.days is not None or self.amount is not None):
+            raise ValueError('An unknown duration cannot also have a numeric value.')
+        if self.days is not None and (self.amount is not None or self.unit != 'days'):
+            raise ValueError('Supply either legacy days or amount/unit, not conflicting values.')
+        if self.amount is not None and self.amount > {'days': 3650, 'weeks': 521, 'months': 120}[self.unit]:
+            raise ValueError('Duration exceeds the supported context range.')
+        return self
+
+
 class SymptomConfirmationRequest(BaseModel):
     text: str = Field(max_length=MAX_SYMPTOM_TEXT_LENGTH)
     confirmed_codes: list[str] = Field(max_length=MAX_CONFIRMED_CODES)
+    corrections: list[SymptomCorrection] = Field(default_factory=list, max_length=MAX_CONFIRMED_CODES)
+
+
+class CovidTestContext(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    result: Literal['positive', 'negative', 'unknown', 'not_tested']
+    test_type: Literal['pcr', 'antigen', 'other', 'unknown'] | None = None
 
 
 class PredictionRequest(BaseModel):
@@ -156,6 +223,10 @@ class PredictionRequest(BaseModel):
     sex: Literal["M", "F"]
     text: str = Field(max_length=MAX_SYMPTOM_TEXT_LENGTH)
     confirmed_codes: list[str] = Field(max_length=MAX_CONFIRMED_CODES)
+    corrections: list[SymptomCorrection] = Field(default_factory=list, max_length=MAX_CONFIRMED_CODES)
+    durations: list[SymptomDuration] = Field(default_factory=list, max_length=MAX_CONFIRMED_CODES)
+    covid_test: CovidTestContext | None = None
+    language: Literal['en', 'sw'] = 'en'
 
 
 class FeedbackRequest(BaseModel):
@@ -236,6 +307,8 @@ def health_check():
         "status": "ok",
         "service": settings.app_name,
         "environment": settings.app_env,
+        'database_ready': getattr(app.state, 'schema_ready', None),
+        'application_build': 'partner-merged-v3-20261105',
     }
 
 
@@ -258,15 +331,59 @@ def database_status():
 
 
 @app.get("/model/status")
-def model_status():
+def model_status(db: Session = Depends(get_db)):
+    active = get_active_model_version(db)
+    if active.version == AWARENESS_VERSION:
+        data = awareness_bundle()
+        policy = selection_policy()
+        return {'status': 'loaded', 'model_version': active.version, 'model_type': data['model_type'],
+                'feature_count': len(data['features']), 'class_count': len(data['classes']),
+                'supported_conditions': data['classes'], 'clinical_validation': False,
+                'named_patient_predictions': False, 'named_research_patterns': policy['mode'] == 'selective_research',
+                'duration_used_by_model': False, 'taste_used_by_model': False, 'covid_prediction_supported': False,
+                'policy_id': policy['policy_id'], 'policy_mode': policy['mode'], 'policy_sha256': policy['sha256'],
+                'schema_id': SCHEMA_ID, 'schema_sha256': digest_json({'features': data['features'], 'classes': data['classes']}),
+                'demographic_scope': {'accepted_age_input': [0, 120], 'clinical_subgroups_validated': False,
+                                      'sex_used_by_model': data['demographic_mode'] == 'age_sex',
+                                      'source_population': 'Simulated DDXPlus profiles, not local clinical prevalence'}}
+    if active.version == V2_MODEL_VERSION:
+        try:
+            data = get_v2_bundle()
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            raise ServiceNotReadyError('The selected V2 research bundle is unavailable; no V1 model was substituted.') from error
+        return {'status': 'loaded', 'model_version': active.version, 'model_type': type(data['model']).__name__,
+                'feature_count': len(data['features']), 'model_feature_count': int(data['model'].n_features_in_),
+                'class_count': len(data['classes']), 'model_class_count': len(data['model'].classes_),
+                'supported_conditions': data['classes'], 'clinical_validation': False, 'research_prototype': True,
+                'duration_used_by_model': False, 'taste_used_by_model': False, 'covid_prediction_validated': False}
+    if active.version == CANDIDATE_MODEL_VERSION:
+        from app.ml.candidate_loader import load_candidate_runtime
+        runtime = load_candidate_runtime()
+        return {'status': 'loaded', 'model_version': active.version, 'model_type': 'Optional verified research candidate',
+                'feature_count': len(runtime.schema['feature_names']), 'class_count': len(runtime.classes),
+                'clinical_validation': False, 'supported_conditions': list(runtime.classes)}
+    if active.version != '1.0':
+        raise ServiceNotReadyError('The selected model version is not supported; no legacy model was substituted.')
+    from app.ml.model_loader import model, model_features, disease_classes
     return {
+        'model_version': active.version,
         "status": "loaded",
         "model_type": type(model).__name__,
         "feature_count": len(model_features),
         "model_feature_count": int(model.n_features_in_),
         "class_count": len(disease_classes),
         "model_class_count": len(model.classes_),
+        'supported_conditions': list(disease_classes), 'clinical_validation': False,
+        'duration_used_by_model': False, 'taste_used_by_model': False, 'covid_prediction_supported': False,
     }
+
+
+@app.get('/readiness')
+def readiness(db: Session = Depends(get_db)):
+    if not refresh_schema_state(app):
+        raise HTTPException(status_code=503, detail='Database/schema not ready; safety guidance remains available.')
+    status = model_status(db)
+    return {'status': 'ready', 'model_version': status['model_version'], 'clinical_validation': False}
 
 
 # ---------------------------------------------------------
@@ -399,11 +516,23 @@ def map_symptoms(
 ):
     try:
         output = build_confirmation_output(request.text, db)
+    except (SQLAlchemyError, ServiceNotReadyError):
+        record_mapping_event(db=db)
+        safety = build_confirmation_output(request.text)
+        if safety['has_red_flag']:
+            return safety
+        raise
     except Exception:
         record_mapping_event(db=db)
         raise
     record_mapping_event(output, db=db)
     return output
+
+
+@app.post('/safety/check')
+def check_reported_safety(request: SymptomTextRequest):
+    mapping = build_confirmation_output(request.text)
+    return {**mapping, **get_urgent_guidance()} if mapping['has_red_flag'] else mapping
 
 
 @app.post("/symptoms/confirm")
@@ -416,6 +545,7 @@ def confirm_recognised_symptoms(
             text=request.text,
             confirmed_codes=request.confirmed_codes,
             db=db,
+            corrections=[c.model_dump() for c in request.corrections],
         )
 
     except ValueError as error:
@@ -435,6 +565,7 @@ def create_safety_review(
             text=request.text,
             confirmed_codes=request.confirmed_codes,
             db=db,
+            corrections=[c.model_dump() for c in request.corrections],
         )
     except ValueError as error:
         raise HTTPException(
@@ -499,6 +630,7 @@ def predict_conditions(
             text=request.text,
             confirmed_codes=request.confirmed_codes,
             db=db,
+            corrections=[c.model_dump() for c in request.corrections],
         )
 
         # Independent safety checks run before model selection.
@@ -538,6 +670,19 @@ def predict_conditions(
             }
 
         active_model_version = get_active_model_version(db)
+
+        if active_model_version.version == AWARENESS_VERSION:
+            assessment = assess_awareness(confirmation, request.age, request.sex,
+                [d.model_dump() for d in request.durations], request.language,
+                covid_test=request.covid_test.model_dump() if request.covid_test else None)
+            assessment = apply_awareness_information(assessment, db)
+            session = save_prediction_session(db, user_id=current_user.id, age=request.age, sex=request.sex,
+                input_text=request.text, confirmed_codes=confirmation['confirmed_codes'],
+                model_features=assessment['present_features'], status=assessment['status'], has_red_flag=False,
+                predictions=[], model_version_id=active_model_version.id, assessment=assessment)
+            return {'prediction_id': str(session.id), 'status': assessment['status'], 'age': request.age, 'sex': request.sex,
+                    'confirmed_codes': confirmation['confirmed_codes'], 'model_version': AWARENESS_VERSION,
+                    'predictions': [], 'has_red_flag': False, 'assessment': public_assessment(assessment), **get_prediction_guidance()}
 
         # Candidate assessment route.
         if active_model_version.version == CANDIDATE_MODEL_VERSION:
@@ -730,7 +875,7 @@ def get_patient_history(
                 "status": session.status,
                 "has_red_flag": session.has_red_flag,
                 "predictions": session.predictions,
-                "assessment": session.assessment,
+                "assessment": public_assessment(session.assessment),
                 "created_at": session.created_at,
             }
             for session in sessions
@@ -857,7 +1002,7 @@ def get_patient_history_item(
         "status": session.status,
         "has_red_flag": session.has_red_flag,
         "predictions": session.predictions,
-        "assessment": session.assessment,
+        "assessment": public_assessment(session.assessment),
         "created_at": session.created_at,
     }
 

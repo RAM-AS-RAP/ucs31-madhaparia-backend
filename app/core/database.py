@@ -20,6 +20,10 @@ class Base(DeclarativeBase):
     pass
 
 
+class SchemaNotReadyError(RuntimeError):
+    """Structural readiness failure, distinct from a programming error."""
+
+
 def get_db():
     db = SessionLocal()
 
@@ -47,7 +51,7 @@ def check_schema():
     )
 
     if missing_tables:
-        raise RuntimeError(
+        raise SchemaNotReadyError(
             "The database schema is not up to date "
             f"(missing tables: {missing_tables}). "
             "Run: python -m alembic upgrade head"
@@ -68,7 +72,7 @@ def check_schema():
         )
 
     if missing_columns:
-        raise RuntimeError(
+        raise SchemaNotReadyError(
             "The database schema is not up to date "
             f"(missing columns: {sorted(missing_columns)}). "
             "Run: python -m alembic upgrade head"

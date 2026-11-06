@@ -1,5 +1,7 @@
 ﻿# Respiratory Health Awareness Backend
 
+> **Merged release (November 2026):** the selected local model is now the V3 partial-evidence research model, not the legacy Random Forest described below. It returns versioned symptom assessments, selective tentative patterns and conditional COVID testing guidance, not patient probability rankings. Partner account/profile/password-reset/admin features are retained. See [merged setup, tests and limitations](MERGED_RELEASE.md) before following older activation instructions below.
+
 Backend API for the **Respiratory Health Awareness and Prediction System**.
 
 The system accepts respiratory symptom descriptions in English, Kiswahili, or mixed-language text, maps the text to recognised symptoms, allows symptom confirmation, checks for red-flag symptoms, and uses a trained Random Forest model to return the top three possible condition patterns.

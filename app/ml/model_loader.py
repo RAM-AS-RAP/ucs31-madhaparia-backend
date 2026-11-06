@@ -2,9 +2,11 @@
 """Load and validate saved respiratory Random Forest models."""
 
 import json
+from functools import lru_cache
 from pathlib import Path
 
 import joblib
+from app.core.errors import ServiceNotReadyError
 
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
@@ -202,10 +204,19 @@ def load_v2_model_bundle():
     }
 
 
-# Preserve existing V1 imports used throughout the backend.
-model_bundle = load_model_bundle()
+@lru_cache(maxsize=1)
+def _legacy_bundle():
+    try:
+        return load_model_bundle()
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise ServiceNotReadyError('The selected legacy V1 model bundle is unavailable; no alternative was substituted.') from error
 
-model = model_bundle["model"]
-model_features = model_bundle["features"]
-disease_classes = model_bundle["classes"]
-model_metadata = model_bundle["metadata"]
+
+def __getattr__(name):
+    # Preserve legacy imports without making static safety depend on V1 artifacts.
+    keys = {'model': 'model', 'model_features': 'features', 'disease_classes': 'classes', 'model_metadata': 'metadata'}
+    if name == 'model_bundle':
+        return _legacy_bundle()
+    if name in keys:
+        return _legacy_bundle()[keys[name]]
+    raise AttributeError(name)

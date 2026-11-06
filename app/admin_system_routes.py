@@ -109,7 +109,8 @@ def page_rows(db, query, page, size=12):
 @router.get("/model")
 def model_information(db: Session = Depends(get_db)):
     from app.ml.candidate_loader import CANDIDATE_MODEL_VERSION
-    from app.ml.model_loader import V2_MODEL_VERSION, model_bundle
+    from app.ml.model_loader import V2_MODEL_VERSION
+    from app.services.awareness import MODEL_VERSION, MODEL_SHA256, bundle as awareness_bundle, selection_policy
     from app.services.candidate_prediction import validate_candidate_registration
     from app.services.v2_prediction import get_v2_bundle
 
@@ -118,10 +119,19 @@ def model_information(db: Session = Depends(get_db)):
         return {"state": "no_active_model" if not records else "multiple_active_models", "model": None}
     record = records[0]
     state = "ready"
+    policy = None
     try:
-        if record.version == CANDIDATE_MODEL_VERSION:
+        if record.version == MODEL_VERSION:
+            bundle = awareness_bundle()
+            policy = selection_policy()
+            if (record.feature_count != len(bundle['features']) or record.class_count != len(bundle['classes'])
+                    or record.artifact_filename != 'v3_partial_evidence.json'
+                    or record.parameters.get('sha256') != MODEL_SHA256):
+                raise ServiceNotReadyError('Research model registration differs.')
+        elif record.version == CANDIDATE_MODEL_VERSION:
             validate_candidate_registration(record)
         elif record.version in ("1.0", V2_MODEL_VERSION):
+            from app.ml.model_loader import model_bundle
             bundle = model_bundle if record.version == "1.0" else get_v2_bundle()
             if record.feature_count != len(bundle["features"]) or record.class_count != len(bundle["classes"]):
                 raise ServiceNotReadyError("Model dimensions differ.")
@@ -137,8 +147,16 @@ def model_information(db: Session = Depends(get_db)):
         "purpose": record.purpose, "feature_count": record.feature_count, "class_count": record.class_count,
         "training_samples": record.training_samples, "validation_samples": record.validation_samples,
         "test_samples": record.test_samples, "created_at": record.created_at,
-        "sample_count_definitions": record.parameters.get("sample_count_definitions", {}),
+        "sample_count_definitions": record.parameters.get("sample_count_definitions", {}) or ({
+            'training': 'Upstream fitted simulated DDXPlus training records, not clinical patients.',
+            'validation_and_test': 'Zero registry sample counts mean not recorded here, not no evaluation. See the recorded research selection-policy evidence below.',
+        } if policy else {}),
         "validation_metrics": record.validation_metrics, "test_metrics": record.test_metrics,
+        "selection_evaluation": ({
+            'policy_id': policy['policy_id'], 'policy_sha256': policy['sha256'],
+            'scope': 'Frozen selection-policy evaluation on simulated DDXPlus source records; not clinical accuracy or patient risk.',
+            'validation': policy.get('validation', {}), 'test': policy.get('test', {}),
+        } if policy else None),
         "clinical_validation": False,
     }}
 
@@ -160,6 +178,8 @@ def baseline_aliases():
     for language in ("english", "swahili"):
         values = json.loads((ROOT / f"nlp/{language}_aliases.json").read_text(encoding="utf-8"))
         result.update((code, " ".join(value.lower().split())) for code, aliases in values.items() for value in aliases)
+    from app.nlp.reported_context import aliases
+    result.update((item['code'], ' '.join(item['alias'].lower().split())) for item in aliases())
     return result
 
 
@@ -191,7 +211,8 @@ def add_alias(symptom_id: uuid.UUID, payload: AliasCreate, db: Session = Depends
     db.execute(text("SELECT pg_advisory_xact_lock(730073)"))
     row = lock(db, Symptom, symptom_id, payload.expected_revision)
     existing = db.scalars(select(SymptomAlias)).all()
-    if any(" ".join(unicodedata.normalize("NFC", item.alias).lower().split()) == payload.alias for item in existing):
+    if (any(" ".join(unicodedata.normalize("NFC", item.alias).lower().split()) == payload.alias for item in existing)
+            or any(alias == payload.alias for _, alias in baseline_aliases())):
         failure(409, "alias_exists", "This wording is already mapped. Search the catalogue first.")
     db.add(SymptomAlias(symptom_id=row.id, alias=payload.alias, language=payload.language))
     row.revision += 1

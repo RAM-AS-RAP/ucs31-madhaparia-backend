@@ -1,0 +1,434 @@
+[
+  {
+    "row": 1,
+    "condition": "Upper Respiratory Tract Infection (URTI)",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have a blocked nose, sore throat, body aches and fever.",
+    "status": "research_pattern",
+    "display_name": "Upper Respiratory Tract Infection (URTI)",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "runny_blocked_nose",
+      "sore_throat",
+      "muscle_aches",
+      "fever"
+    ],
+    "present_features": [
+      "E_144",
+      "E_181",
+      "E_91",
+      "E_97"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 2,
+    "condition": "Influenza",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have fever, body aches, chills and a sore throat.",
+    "status": "research_pattern",
+    "display_name": "FLU(influenza)",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "sore_throat",
+      "muscle_aches",
+      "chills",
+      "fever"
+    ],
+    "present_features": [
+      "E_144",
+      "E_91",
+      "E_94",
+      "E_97"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 3,
+    "condition": "Pulmonary neoplasm",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I feel tired and have a headache.",
+    "status": "research_pattern",
+    "display_name": "Lung Tumour / Pulmonary Neoplasm",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "headache",
+      "tiredness"
+    ],
+    "present_features": [
+      "E_53",
+      "E_89"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 4,
+    "condition": "Pneumonia",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have fever, chills and body aches. I do not have a headache.",
+    "status": "research_pattern",
+    "display_name": "Pneumonia",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "muscle_aches",
+      "chills",
+      "fever"
+    ],
+    "present_features": [
+      "E_144",
+      "E_91",
+      "E_94"
+    ],
+    "absent_features": [
+      "E_53"
+    ]
+  },
+  {
+    "row": 5,
+    "condition": "Viral pharyngitis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have a sore throat, fever and difficulty swallowing.",
+    "status": "insufficient_information",
+    "display_name": null,
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "difficulty_swallowing",
+      "sore_throat",
+      "fever"
+    ],
+    "present_features": [
+      "E_65",
+      "E_91",
+      "E_97"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 6,
+    "condition": "Epiglottitis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have a headache, difficulty swallowing and tiredness. I do not have a cough.",
+    "status": "research_pattern",
+    "display_name": "Epiglottitis",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "difficulty_swallowing",
+      "tiredness",
+      "headache"
+    ],
+    "present_features": [
+      "E_53",
+      "E_65",
+      "E_89"
+    ],
+    "absent_features": [
+      "E_201"
+    ]
+  },
+  {
+    "row": 7,
+    "condition": "Whooping cough",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have intense coughing fits and vomiting after coughing.",
+    "status": "research_pattern",
+    "display_name": "Whooping Cough (Pertussis)",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "vomiting_after_coughing",
+      "intense_coughing_fits"
+    ],
+    "present_features": [
+      "E_166",
+      "E_203"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 8,
+    "condition": "Acute laryngitis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have a hoarse voice and a cough.",
+    "status": "research_pattern",
+    "display_name": "Acute Laryngitis",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "hoarse_voice",
+      "cough"
+    ],
+    "present_features": [
+      "E_201",
+      "E_212"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 9,
+    "condition": "Tuberculosis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have fever and weight loss.",
+    "status": "research_pattern",
+    "display_name": "Tuberculosis (TB)",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "weight_loss",
+      "fever"
+    ],
+    "present_features": [
+      "E_162",
+      "E_91"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 10,
+    "condition": "Allergic sinusitis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have itchy eyes, difficulty swallowing and a cough.",
+    "status": "research_pattern",
+    "display_name": "Allergy-Related Sinus Inflammation",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "difficulty_swallowing",
+      "itchy_eyes",
+      "cough"
+    ],
+    "present_features": [
+      "E_170",
+      "E_201",
+      "E_65"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 11,
+    "condition": "Acute pulmonary edema",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have tiredness, waking up breathless and worse when lying down.",
+    "status": "research_pattern",
+    "display_name": "Sudden Fluid Build-Up in the Lungs",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "worse_lying_down",
+      "night_breathlessness",
+      "tiredness"
+    ],
+    "present_features": [
+      "E_217",
+      "E_67",
+      "E_89"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 12,
+    "condition": "Bronchiolitis",
+    "age": 1,
+    "sex": "F",
+    "prompt": "I have a blocked nose, cough, chills and tiredness. I do not have chest pain.",
+    "status": "research_pattern",
+    "display_name": "Bronchiolitis",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "runny_blocked_nose",
+      "tiredness",
+      "chills",
+      "cough"
+    ],
+    "present_features": [
+      "E_181",
+      "E_201",
+      "E_89",
+      "E_94"
+    ],
+    "absent_features": [
+      "E_53"
+    ]
+  },
+  {
+    "row": 13,
+    "condition": "Acute rhinosinusitis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have a blocked nose, fever, a hoarse voice and loss of smell.",
+    "status": "research_pattern",
+    "display_name": "Acute Sinusitis",
+    "covid_testing_recommended": true,
+    "confirmed_codes": [
+      "loss_of_smell",
+      "hoarse_voice",
+      "runny_blocked_nose",
+      "fever"
+    ],
+    "present_features": [
+      "E_103",
+      "E_181",
+      "E_212",
+      "E_91"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 14,
+    "condition": "Spontaneous pneumothorax",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have a sore throat, waking up breathless and chest pain when taking a deep breath.",
+    "status": "research_pattern",
+    "display_name": "Spontaneous Collapsed Lung",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "pain_deep_breath",
+      "night_breathlessness",
+      "sore_throat"
+    ],
+    "present_features": [
+      "E_220",
+      "E_67",
+      "E_97"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 15,
+    "condition": "COPD exacerbation",
+    "age": 65,
+    "sex": "M",
+    "prompt": "I have a cough, wheezing and shortness of breath.",
+    "status": "urgent_review",
+    "display_name": null,
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "shortness_of_breath",
+      "wheezing",
+      "cough"
+    ],
+    "present_features": [],
+    "absent_features": []
+  },
+  {
+    "row": 16,
+    "condition": "Bronchitis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have wheezing and a blocked nose.",
+    "status": "research_pattern",
+    "display_name": "Bronchitis",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "runny_blocked_nose",
+      "wheezing"
+    ],
+    "present_features": [
+      "E_181",
+      "E_214"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 17,
+    "condition": "Chronic rhinosinusitis",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have a blocked nose, cough and loss of smell.",
+    "status": "research_pattern",
+    "display_name": "Chronic Sinusitis",
+    "covid_testing_recommended": true,
+    "confirmed_codes": [
+      "loss_of_smell",
+      "runny_blocked_nose",
+      "cough"
+    ],
+    "present_features": [
+      "E_103",
+      "E_181",
+      "E_201"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 18,
+    "condition": "Croup",
+    "age": 5,
+    "sex": "F",
+    "prompt": "I have a blocked nose, fever and tiredness.",
+    "status": "research_pattern",
+    "display_name": "Croup",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "runny_blocked_nose",
+      "tiredness",
+      "fever"
+    ],
+    "present_features": [
+      "E_181",
+      "E_89",
+      "E_91"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 19,
+    "condition": "Asthma exacerbation",
+    "age": 7,
+    "sex": "F",
+    "prompt": "I have wheezing and pain on deep breath. I do not have chest pain.",
+    "status": "research_pattern",
+    "display_name": "Asthma Flare-Up / Airway Spasm",
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "pain_deep_breath",
+      "wheezing"
+    ],
+    "present_features": [
+      "E_214",
+      "E_220"
+    ],
+    "absent_features": [
+      "E_53"
+    ]
+  },
+  {
+    "row": 20,
+    "condition": "Bronchiectasis",
+    "age": 65,
+    "sex": "M",
+    "prompt": "I have a persistent cough and coughing up phlegm.",
+    "status": "insufficient_information",
+    "display_name": null,
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "productive_cough",
+      "cough"
+    ],
+    "present_features": [
+      "E_201"
+    ],
+    "absent_features": []
+  },
+  {
+    "row": 21,
+    "condition": "Laryngospasm",
+    "age": 22,
+    "sex": "F",
+    "prompt": "I have sudden difficulty breathing and throat tightness.",
+    "status": "urgent_review",
+    "display_name": null,
+    "covid_testing_recommended": false,
+    "confirmed_codes": [
+      "shortness_of_breath"
+    ],
+    "present_features": [],
+    "absent_features": []
+  }
+]

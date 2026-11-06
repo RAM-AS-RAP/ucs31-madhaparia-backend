@@ -1,5 +1,7 @@
 import json
+from functools import lru_cache
 from pathlib import Path
+from app.core.errors import ServiceNotReadyError
 
 
 CONDITION_INFO_PATH = (
@@ -9,11 +11,12 @@ CONDITION_INFO_PATH = (
 )
 
 
-with CONDITION_INFO_PATH.open(
-    "r",
-    encoding="utf-8",
-) as file:
-    CONDITION_INFORMATION = json.load(file)
+@lru_cache(maxsize=1)
+def load_condition_information():
+    try:
+        return json.loads(CONDITION_INFO_PATH.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as error:
+        raise ServiceNotReadyError('Condition information is unavailable; static urgent guidance remains available.') from error
 
 
 CONFIDENCE_EXPLANATION = (
@@ -49,16 +52,17 @@ def enrich_predictions(
     predictions: list[dict],
 ) -> list[dict]:
     enriched_predictions = []
+    information = load_condition_information()
 
     for prediction in predictions:
         condition = prediction["condition"]
 
-        if condition not in CONDITION_INFORMATION:
+        if condition not in information:
             raise ValueError(
                 f"No condition information found for: {condition}"
             )
 
-        condition_info = CONDITION_INFORMATION[condition]
+        condition_info = information[condition]
 
         enriched_predictions.append(
             {

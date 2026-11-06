@@ -25,6 +25,24 @@ def apply_disease_information(predictions, db):
     return result
 
 
+def apply_awareness_information(assessment, db):
+    """Snapshot managed descriptions without changing model scores or class IDs."""
+    from app.services.awareness import digest_json
+
+    result = deepcopy(assessment)
+    pattern = result.get('research_pattern')
+    if pattern:
+        result['research_pattern'] = apply_disease_information([pattern], db)[0]
+        if pattern['condition'] == 'Influenza':
+            result['research_pattern']['display_name'] = 'FLU(influenza)'
+        result['provenance']['managed_pattern_sha256'] = digest_json(result['research_pattern'])
+        result['provenance']['guidance_sha256'] = digest_json({
+            'summary': result['summary'], 'next_steps': result['next_steps'],
+            'limitations': result['limitations'], 'pattern': result['research_pattern'],
+        })
+    return result
+
+
 def record_mapping_event(output=None, *, db=None):
     """Best-effort transaction: diagnostics must not break the patient flow.
 
