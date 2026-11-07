@@ -16,6 +16,7 @@ EXTRA_ALIASES = {
     "en": {
         "taste_change": ["loss of taste", "lost taste", "lost my taste", "lost sense of taste", "cannot taste", "can't taste", "can't taste anything", "cannot taste anything", "reduced taste", "sense of taste has reduced", "sense of taste is reduced", "taste has reduced", "sense of taste has decreased", "food has less taste", "cannot taste as well", "food tastes bland", "metallic taste", "everything tastes different", "does not taste well"],
         "sneezing": ["sneezing", "sneeze"],
+        "coughing_blood": ["cough blood", "coughing blood", "coughs blood", "blood when i cough"],
         "shortness_of_breath": ["struggling to breathe", "unable to breathe", "cannot catch my breath"],
         "loss_of_smell": ["can smell normally", "can smell", "can still smell normally", "can still smell"],
     },

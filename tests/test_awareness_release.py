@@ -117,7 +117,11 @@ def test_denied_taste_reduction_is_not_a_positive_fuzzy_match(text):
     assert symptom is None or symptom['status'] != 'present'
 
 
-@pytest.mark.parametrize('text', ['I cannot breathe', 'Ninakohoa damu na siwezi kupumua vizuri', 'blue lips and cough'])
+@pytest.mark.parametrize('text', [
+    'I cannot breathe', 'Ninakohoa damu na siwezi kupumua vizuri',
+    'blue lips and cough', 'cough blood', 'I cough blood',
+    'I am coughing blood', 'blood when I cough',
+])
 def test_warning_is_independent_of_selection(text):
     confirmation = confirm_symptoms(text, [], None)
     assert confirmation['has_red_flag']
@@ -126,7 +130,12 @@ def test_warning_is_independent_of_selection(text):
     assert assessment['research_rankings'] == []
 
 
-@pytest.mark.parametrize('text', ['I am not coughing up blood', 'My mother has blue lips', 'Sina shida ya kupumua'])
+@pytest.mark.parametrize('text', [
+    'I am not coughing up blood', 'I am not coughing blood',
+    'My mother coughs blood', 'I had a blood test for my cough',
+    'My mother has blue lips',
+    'Sina shida ya kupumua',
+])
 def test_no_invented_current_warning(text):
     assert not build_confirmation_output(text)['has_red_flag']
 
@@ -203,8 +212,28 @@ def test_partial_evidence_and_duration_do_not_fabricate_scores():
     assert first['status'] == 'insufficient_information'
     assert first['clinical_validation'] is False
     assert 'research_rankings' not in public_assessment(first)
+    assert first['research_pattern'] is None
     denied = confirm_symptoms('cough but no fever', ['cough'], None)
     assert 'E_91' in assess(denied, 22, 'F')['absent_features']
+
+
+def test_public_comparison_score_is_only_available_for_an_accepted_matching_pattern():
+    assessment = {
+        'status': 'research_pattern',
+        'research_pattern': {'condition': 'Influenza', 'display_name': 'FLU(influenza)'},
+        'research_rankings': [{'condition': 'Influenza', 'raw_relative_score': 0.831234},
+                              {'condition': 'Tuberculosis', 'raw_relative_score': 0.1}],
+    }
+    public = public_assessment(assessment)
+    assert public['research_pattern']['comparison_score_percent'] == 83.12
+    assert 'research_rankings' not in public
+    assert 'comparison_score_percent' not in assessment['research_pattern']
+
+    for status in ('insufficient_information', 'urgent_review'):
+        withheld = public_assessment({**assessment, 'status': status})
+        assert 'comparison_score_percent' not in withheld['research_pattern']
+    mismatch = public_assessment({**assessment, 'research_pattern': {'condition': 'Tuberculosis'}})
+    assert 'comparison_score_percent' not in mismatch['research_pattern']
 
 
 def test_corrections_and_duration_validation():
@@ -227,6 +256,9 @@ def test_selective_research_pattern_uses_evaluated_policy_not_personal_probabili
     public = public_assessment(result)
     assert 'research_rankings' not in public
     assert 'raw_relative_score' not in str(public)
+    assert public['research_pattern']['comparison_score_percent'] == round(
+        result['research_rankings'][0]['raw_relative_score'] * 100, 2
+    )
     assert result['provenance']['model_sha256']
     assert result['provenance']['schema_sha256']
     assert result['provenance']['policy_sha256']
@@ -348,6 +380,7 @@ def test_covid_test_result_is_recorded_as_context_not_a_prediction(result, expec
     public = public_assessment(assessment)
     assert public['covid_test_context']['result'] == result
     assert 'research_rankings' not in public
+    assert public['research_pattern'] is None
 
 
 def test_covid_test_context_round_trips_through_api_and_history(release_api):

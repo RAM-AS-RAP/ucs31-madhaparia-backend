@@ -94,7 +94,14 @@ def bundle():
 def public_assessment(assessment):
     result = deepcopy(assessment)
     if isinstance(result, dict):
-        result.pop('research_rankings', None)
+        rankings = result.pop('research_rankings', None)
+        pattern = result.get('research_pattern')
+        if result.get('status') == 'research_pattern' and isinstance(pattern, dict) and isinstance(rankings, list) and rankings:
+            leader = rankings[0]
+            score = leader.get('raw_relative_score') if isinstance(leader, dict) else None
+            if (isinstance(leader, dict) and leader.get('condition') == pattern.get('condition') and type(score) in (int, float)
+                    and math.isfinite(score) and 0 <= score <= 1):
+                pattern['comparison_score_percent'] = round(score * 100, 2)
     return result
 
 
