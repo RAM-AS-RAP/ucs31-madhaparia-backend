@@ -1,633 +1,141 @@
-﻿# Respiratory Health Awareness Backend
+# Respiratory Health Awareness Backend
 
-> **Merged release (November 2026):** the selected local model is now the V3 partial-evidence research model, not the legacy Random Forest described below. It returns versioned symptom assessments, selective tentative patterns and conditional COVID testing guidance, not patient probability rankings. Partner account/profile/password-reset/admin features are retained. See [merged setup, tests and limitations](MERGED_RELEASE.md) before following older activation instructions below.
+**Bilingual symptom processing, safety-first assessment, and patient history — powered by FastAPI.**
 
-Backend API for the **Respiratory Health Awareness and Prediction System**.
+Backend API for the **Respiratory Health Awareness and Prediction System**. It
+processes English, Kiswahili, and mixed-language symptom descriptions, lets users
+confirm or correct recognised symptoms, checks red flags, and returns
+research-based awareness assessments.
 
-The system accepts respiratory symptom descriptions in English, Kiswahili, or mixed-language text, maps the text to recognised symptoms, allows symptom confirmation, checks for red-flag symptoms, and uses a trained Random Forest model to return the top three possible condition patterns.
+> **Research and education only.** This is not a clinically validated diagnostic
+> service. It does not replace professional medical advice, diagnosis, treatment,
+> or emergency care.
 
-The system also provides secure user authentication, patient-specific prediction history, role-based access control, administrator history access, and PostgreSQL data storage.
+[Architecture](#system-architecture) · [Setup](#getting-started) ·
+[API](#main-api-endpoints) · [Testing](#testing) ·
+[Limitations](#limitations) · [Documentation](#further-documentation)
 
-The system is designed for **health-awareness purposes only** and does not provide a medical diagnosis.
+## System Architecture
 
----
+![Architecture showing patient and administrator React frontends connected to FastAPI, bilingual symptom mapping, red-flag safety checks, the V3 research model, and PostgreSQL](docs/images/system-architecture.svg)
+
+*Current V3 architecture, simplified. The React frontends are separate applications;
+this repository contains the backend. Confirmed red flags bypass model inference.*
+
+### How an assessment works
+
+1. **Describe:** the patient enters symptoms in English, Kiswahili, or both.
+2. **Review:** the backend maps supported wording; the patient confirms symptoms
+   and corrects their state or subject where necessary.
+3. **Check safety:** recognised, confirmed red flags return urgent guidance
+   without running a model.
+4. **Assess:** non-urgent supported evidence is evaluated by the active model.
+   V3 names a tentative research pattern only when its selection policy permits.
+5. **Save:** authenticated assessments are stored in the patient's history;
+   patients can submit feedback on their own saved records.
+
+## Current Assessment Behaviour
+
+The current release documents **V3 partial-evidence research** as its selected
+assessment path: **34 features and 21 condition classes**, with selection policy
+`ddxplus_selective_research_v1`.
+
+| Outcome | Behaviour |
+| --- | --- |
+| Confirmed red flag | Urgent guidance; model inference is bypassed |
+| Eligible research pattern | A tentative pattern in `assessment.research_pattern` |
+| Uncertain or unsupported evidence | No named pattern is presented |
+| COVID-related context | Conditional testing advice, not a COVID diagnosis |
+
+Important integration details:
+
+- Non-urgent V3 responses contain a versioned `assessment` object and
+  `predictions: []`. Read any selected pattern from
+  `assessment.research_pattern`, not that empty array.
+- A research score is **not the probability that a patient has a disease**.
+  Full research rankings are restricted to authorised administrator access.
+- Duration and taste changes are context-only, not V3 scoring features.
+  Smell is a supported fitted feature.
+- Existing V1, V2, and independent urgent-review history remains readable.
+- The model served by a deployment depends on its database registration.
+  Check `/model/status` rather than assuming V3 is active.
+
+See [release notes](MERGED_RELEASE.md) for serving behaviour and compatibility
+details.
 
 ## Features
 
-The backend provides:
+### Symptom processing and safety
 
-- FastAPI REST API
-- English and Kiswahili symptom mapping
-- Mixed-language symptom input
-- Fuzzy symptom matching
-- Symptom confirmation and rejection
-- Red-flag symptom detection
-- Safety-only red-flag handling
-- Random Forest prediction
-- Top-3 condition pattern results
-- User-friendly disease names
-- Plain-English condition descriptions
-- Model-confidence explanation
-- Health-awareness guidance
-- PostgreSQL prediction storage
-- User account registration and login
-- Secure Argon2 password hashing
-- JWT-based authentication
-- Patient-specific prediction ownership
-- Patient-specific prediction history
-- Role-based access control
-- Administrator access to all prediction histories
-- Administrator access to feedback records
-- User feedback storage
-- Duplicate feedback protection
-- API validation and error handling
-- Alembic database migrations
-- Automated backend tests
+- English, Kiswahili, and mixed-language symptom mapping
+- Alias and fuzzy matching within the supported vocabulary
+- Symptom confirmation, corrections, and reported-context handling
+- Red-flag checks before model selection
+- Independent safety-check endpoint
+- Research-based awareness guidance and versioned assessment snapshots
 
----
+### Patient accounts
+
+- Registration, login, and profile updates
+- Argon2 password hashing and JWT authentication
+- Email-based password recovery when SMTP is configured
+- Patient-specific assessment history and feedback
+
+### Administration
+
+- Role-protected history and feedback access
+- Patient-account creation and access management
+- Active-model diagnostics
+- Custom symptom-alias and disease-information management
+- Feedback review and management activity records
+
+### Backend infrastructure
+
+- PostgreSQL storage with SQLAlchemy and Alembic migrations
+- Request validation and service-readiness checks
+- Automated API, integration, and regression tests
 
 ## Technology Stack
 
+| Area | Technology |
+| --- | --- |
+| Runtime | Python 3.11 |
+| API | FastAPI, Uvicorn, Pydantic |
+| Database | PostgreSQL, SQLAlchemy, Psycopg |
+| Migrations | Alembic |
+| NLP matching | Python, RapidFuzz |
+| Model tooling | NumPy, pandas, scikit-learn, joblib |
+| Authentication | PyJWT, pwdlib, Argon2 |
+| Testing | pytest, HTTPX |
+
+Dependency versions are listed in [requirements.txt](requirements.txt).
+Random Forest artifacts remain for legacy paths; they are not the V3 model.
+
+## Getting Started
+
+### Prerequisites
+
 - Python 3.11
-- FastAPI
-- Uvicorn
-- Pydantic
-- Pydantic Settings
-- scikit-learn
-- pandas
-- NumPy
-- joblib
-- RapidFuzz
-- SQLAlchemy
-- Alembic
-- PostgreSQL
-- Neon PostgreSQL
-- Psycopg
-- PyJWT
-- pwdlib
-- Argon2 password hashing
-- email-validator
-- pytest
-- HTTPX
-
----
-
-## Project Structure
-
-```text
-ucs31-madhaparia-backend/
-│
-├── alembic/
-│   ├── versions/
-│   │   ├── cbf545f55898_baseline_existing_schema.py
-│   │   ├── 7e65fb049ca7_add_users_table.py
-│   │   ├── c789b43ef979_link_prediction_sessions_to_users.py
-│   │   ├── 15b0fe7743ef_add_symptom_catalog_tables.py
-│   │   ├── b686b7b5730a_add_model_version_tracking.py
-│   │   └── a3f1c9d27b64_add_unique_feedback_per_prediction.py
-│   │
-│   ├── env.py
-│   ├── README
-│   └── script.py.mako
-│
-├── app/
-│   ├── core/
-│   │   ├── auth.py
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── errors.py
-│   │   └── security.py
-│   │
-│   ├── data/
-│   │   └── condition_information.json
-│   │
-│   ├── db/
-│   │   ├── __init__.py
-│   │   ├── create_admin.py
-│   │   ├── models.py
-│   │   ├── seed_model_version.py
-│   │   └── seed_symptom_catalog.py
-│   │
-│   ├── ml/
-│   │   ├── artifacts/
-│   │   │   ├── disease_classes.json
-│   │   │   ├── model_features.json
-│   │   │   ├── model_metadata.json
-│   │   │   └── respiratory_random_forest_v1.joblib
-│   │   │
-│   │   └── model_loader.py
-│   │
-│   ├── nlp/
-│   │   ├── canonical_symptoms.json
-│   │   ├── english_aliases.json
-│   │   ├── feature_catalog.json
-│   │   ├── swahili_aliases.json
-│   │   └── symptom_mapper.py
-│   │
-│   ├── services/
-│   │   ├── auth.py
-│   │   ├── health_guidance.py
-│   │   ├── history.py
-│   │   ├── model_versions.py
-│   │   ├── prediction.py
-│   │   └── symptom_confirmation.py
-│   │
-│   └── main.py
-│
-├── tests/
-│   ├── conftest.py
-│   ├── test_admin_access.py
-│   ├── test_authentication.py
-│   ├── test_basic_endpoints.py
-│   ├── test_end_to_end.py
-│   ├── test_history_feedback.py
-│   ├── test_nlp_confirmation.py
-│   ├── test_prediction_validation.py
-│   ├── test_service_readiness.py
-│   └── test_symptom_catalog.py
-│
-├── .env.example
-├── .gitignore
-├── alembic.ini
-├── requirements.txt
-├── requirements-dev.txt
-└── README.md
-```
-
----
-
-## Machine Learning Model
-
-The backend integrates the trained production Random Forest model from the machine-learning repository.
-
-The model uses:
-
-- 198 model input features
-- Age
-- Sex
-- 196 selected symptom/evidence features
-- 21 respiratory-related condition classes
-
-The following production artifacts are stored in:
-
-```text
-app/ml/artifacts/
-```
-
-Artifacts:
-
-```text
-disease_classes.json
-model_features.json
-model_metadata.json
-respiratory_random_forest_v1.joblib
-```
-
-The backend loads and validates these artifacts when the application starts.
-
-The prediction endpoint returns the top three model condition patterns.
-
-Model confidence values describe how strongly the supplied symptom pattern matched patterns learned by the model. They are **not probabilities that the patient has a particular disease**.
-
----
-
-## NLP Symptom Processing
-
-The NLP component supports:
-
-- English symptom descriptions
-- Kiswahili symptom descriptions
-- Mixed English/Kiswahili input
-- Symptom aliases
-- Fuzzy spelling matching
-- Unmatched wording detection
-- Red-flag symptom detection
-- Symptom confirmation before prediction
-
-Example input:
-
-```text
-I have fever na kikohozi
-```
-
-The NLP system can recognise symptoms such as:
-
-```text
-fever
-cough
-```
-
-The user must confirm recognised symptoms before they are used for prediction.
-
----
-
-## Red-Flag Safety Handling
-
-Some symptom patterns are treated as red flags.
-
-If a confirmed red-flag symptom is detected:
-
-- Normal prediction output is suppressed
-- The session status becomes `urgent_review`
-- Health-awareness guidance recommends urgent medical assessment
-
-The red-flag mapping is part of the project safety logic and is not intended to represent a complete clinical triage system.
-
----
-
-## Authentication
-
-The backend provides user registration and login using JWT-based authentication.
-
-Authentication endpoints:
-
-```text
-POST /auth/register
-POST /auth/login
-GET  /auth/me
-```
-
-Passwords are never stored in plain text.
-
-Passwords are hashed using Argon2 before being stored in PostgreSQL.
-
-JWT access tokens contain:
-
-- User ID
-- User role
-- Expiration time
-
-The JWT secret is loaded from the local `.env` file and is not committed to Git.
-
-`JWT_SECRET_KEY` is required. The application refuses to start if it is missing, shorter than 32 characters, or still set to a placeholder value.
-
----
-
-## User Roles
-
-The backend currently supports:
-
-```text
-patient
-admin
-```
-
-### Patient
-
-A patient can:
-
-- Register
-- Login
-- Submit authenticated predictions
-- View their own prediction history
-- Retrieve their own individual prediction records
-
-A patient cannot:
-
-- View another patient's prediction history
-- Retrieve another patient's prediction by UUID
-- Access administrator endpoints
-
-### Administrator
-
-An administrator can:
-
-- View all stored prediction histories
-- Retrieve any stored prediction by ID
-- View all stored feedback records
-
-Public registration always creates:
-
-```text
-role = patient
-```
-
-The public registration endpoint does not allow a user to create an administrator account.
-
-Administrator accounts are created from the command line:
-
-```bash
-python -m app.db.create_admin admin@example.com
-```
-
-If the email already belongs to a registered user, that user is promoted to `admin` and keeps their password. Otherwise a new administrator account is created and the password is asked for interactively (or read from the `ADMIN_PASSWORD` environment variable).
-
----
-
-## Prediction Ownership
-
-Every new authenticated prediction is linked to the logged-in patient using:
-
-```text
-prediction_sessions.user_id
-```
-
-Database relationship:
-
-```text
-users.id
-   ↓
-prediction_sessions.user_id
-```
-
-The foreign key uses:
-
-```text
-ON DELETE SET NULL
-```
-
-This allows historical prediction records to remain available even if a user account is removed.
-
-Older prediction records created before authentication was introduced may contain:
-
-```text
-user_id = NULL
-```
-
----
-
-## Patient Prediction History
-
-Authenticated patients can access:
-
-```text
-GET /history
-GET /history/{prediction_id}
-```
-
-`GET /history` returns only records belonging to the authenticated patient.
-
-Patients cannot view another user's records.
-
-If a patient attempts to access another patient's prediction UUID, the API returns:
-
-```text
-404 Not Found
-```
-
-This avoids revealing whether another user's prediction record exists.
-
-Unauthenticated history requests return:
-
-```text
-401 Unauthorized
-```
-
----
-
-## Administrator Access
-
-Administrator-only endpoints:
-
-```text
-GET /admin/history
-GET /admin/history/{prediction_id}
-GET /admin/feedback
-```
-
-Access rules:
-
-```text
-Guest   → 401 Unauthorized
-Patient → 403 Forbidden
-Admin   → Allowed
-```
-
-Administrators can view all prediction sessions, including older records that have no linked user.
-
----
-
-## Feedback
-
-Feedback can be submitted using:
-
-```text
-POST /feedback
-```
-
-Feedback requires authentication. A patient can only submit feedback for their own prediction sessions.
-
-For a prediction that does not exist or belongs to another user, the API returns:
-
-```text
-404 Not Found
-```
-
-Feedback contains:
-
-- Prediction session ID
-- Whether the information was helpful
-- Optional comment
-- Creation timestamp
-
-Only one feedback record can be submitted for a prediction session.
-
-Duplicate feedback submissions are rejected.
-
-Administrators can retrieve stored feedback through:
-
-```text
-GET /admin/feedback
-```
-
----
-
-## Database
-
-The backend uses PostgreSQL.
-
-Development and project testing use a hosted Neon PostgreSQL database.
-
-Main tables:
-
-### `users`
-
-Stores:
-
-- User ID
-- Email
-- Password hash
-- Role
-- Account creation time
-
-### `prediction_sessions`
-
-Stores:
-
-- Prediction ID
-- User ID
-- Age
-- Sex
-- Original symptom text
-- Confirmed symptom codes
-- Model features
-- Prediction status
-- Red-flag status
-- Prediction results
-- Creation time
-
-### `feedback`
-
-Stores:
-
-- Feedback ID
-- Prediction session ID
-- Helpful/not helpful value
-- Optional comment
-- Creation time
-
-### `symptoms`
-
-Stores the canonical symptom catalogue:
-
-- Symptom code
-- Display name
-- Model features
-- Kind
-- Red-flag status
-
-### `symptom_aliases`
-
-Stores the English and Kiswahili wording for each symptom.
-
-### `model_versions`
-
-Stores the trained model versions and which one is active.
-
-The `symptoms`, `symptom_aliases` and `model_versions` tables are filled by the seed commands described in the installation steps.
-
-### `alembic_version`
-
-Stores the currently applied database migration revision.
-
----
-
-## Database Migrations
-
-Database schema changes are managed using Alembic.
-
-Current migration history includes:
-
-```text
-cbf545f55898
-Baseline existing schema
-
-7e65fb049ca7
-Add users table
-
-c789b43ef979
-Link prediction sessions to users
-
-15b0fe7743ef
-Add symptom catalog tables
-
-b686b7b5730a
-Add model version tracking
-
-a3f1c9d27b64
-Add unique feedback per prediction
-```
-
-Alembic is the only place where tables are created. The application does not create tables on startup; if the migrations have not been applied it stops with a message asking you to run `python -m alembic upgrade head`.
-
-The baseline migration creates `prediction_sessions` and `feedback` only when they are missing, so the same command works on an empty database and on a database that already contains those tables.
-
-Check the current migration:
-
-```bash
-python -m alembic current
-```
-
-Apply migrations:
-
-```bash
-python -m alembic upgrade head
-```
-
-Check whether model changes require another migration:
-
-```bash
-python -m alembic check
-```
-
-A clean schema should return:
-
-```text
-No new upgrade operations detected.
-```
-
----
-
-## Environment Configuration
-
-Create a local:
-
-```text
-.env
-```
-
-file in the project root.
-
-Example:
-
-```env
-APP_NAME=Respiratory Health Awareness API
-APP_ENV=development
-
-DATABASE_URL=postgresql+psycopg://user:password@host/database_name?sslmode=require
-
-JWT_SECRET_KEY=replace_with_a_secure_random_secret
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-
-FRONTEND_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-```
-
-`JWT_SECRET_KEY` must be replaced with a random value of at least 32 characters. Generate one with:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-`FRONTEND_ORIGINS` is a comma-separated list of the frontend addresses that are allowed to call the API (CORS).
-
-Do not commit the real `.env` file.
-
-The repository contains:
-
-```text
-.env.example
-```
-
-with safe placeholder values only.
-
----
-
-## Installation
+- An accessible PostgreSQL database
+- Git
+
+Use a **new disposable development database** for the initial setup. The commands
+below run from the backend repository root.
 
 ### 1. Clone the repository
 
 ```bash
 git clone https://github.com/RAM-AS-RAP/ucs31-madhaparia-backend.git
-```
-
-Move into the project:
-
-```bash
 cd ucs31-madhaparia-backend
 ```
 
----
-
-### 2. Create a virtual environment
+### 2. Create and activate a virtual environment
 
 ```bash
 python -m venv .venv
 ```
 
-Activate it.
-
-Windows (PowerShell):
+Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -639,9 +147,8 @@ Linux / macOS:
 source .venv/bin/activate
 ```
 
-On Linux / macOS use `python3 -m venv .venv` if `python` is not available. All remaining commands are the same on every platform once the virtual environment is active.
-
----
+Use `python3` to create the environment if `python` is unavailable.
+Subsequent commands use `python` inside the activated environment.
 
 ### 3. Install dependencies
 
@@ -655,23 +162,11 @@ For development and testing:
 python -m pip install -r requirements-dev.txt
 ```
 
----
+### 4. Configure the environment
 
-### 4. Configure environment variables
+Copy [`.env.example`](.env.example) to `.env`.
 
-Create:
-
-```text
-.env
-```
-
-from:
-
-```text
-.env.example
-```
-
-Windows (PowerShell):
+Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
@@ -683,509 +178,273 @@ Linux / macOS:
 cp .env.example .env
 ```
 
-Then provide the real PostgreSQL connection string and a real JWT secret (see "Environment Configuration" above). The application will not start with the placeholder secret.
+Set your PostgreSQL connection, generate a JWT secret, and adjust allowed
+frontend origins:
 
----
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Your PostgreSQL connection URL; use your provider's TLS requirements |
+| `JWT_SECRET_KEY` | A random secret of at least 32 characters; placeholders are rejected |
+| `FRONTEND_ORIGINS` | Comma-separated frontend origins allowed by CORS |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime; default is 60 minutes |
+| `SMTP_*` | Email delivery settings for password recovery |
 
-### 5. Apply database migrations
+Generate a JWT secret:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Paste the generated value into `JWT_SECRET_KEY` in your private `.env`.
+Password recovery emails require valid SMTP settings; see
+[password recovery setup](docs/PASSWORD_RESET_SETUP.md).
+
+**Never commit `.env`, database credentials, JWT secrets, or SMTP passwords.**
+
+### 5. Initialise the database and activate V3
+
+For a fresh development database:
 
 ```bash
 python -m alembic upgrade head
-```
-
-This creates all tables, including on a completely empty database.
-
----
-
-### 6. Load the reference data
-
-```bash
 python -m app.db.seed_symptom_catalog
-python -m app.db.seed_model_version
+python -m app.db.register_awareness_model --activate
 ```
 
-The first command loads the symptom catalogue and the English/Kiswahili aliases into the database. The second registers the bundled model as the active model version.
+These are explicit setup actions, **not commands to repeat on every server start**.
 
-Both commands are safe to run again.
+> **Existing database:** Back it up and review migrations before upgrading.
+> Do not blindly reseed a customised symptom catalogue.
+> Activation changes the selected model registration.
+> Do not run `app.db.seed_model_version` after activating V3:
+> that command reactivates legacy V1.
 
-Until they have been run, `POST /nlp/map`, `POST /symptoms/confirm` and `POST /predict` return `503 Service Unavailable` with a message naming the command that is missing.
-
----
-
-### 7. Create an administrator (optional)
+### 6. Create an administrator — optional
 
 ```bash
 python -m app.db.create_admin admin@example.com
 ```
 
----
+Public registration creates patient accounts only. If the email already belongs
+to a registered user, this command promotes that account to administrator and
+preserves its password. Otherwise, it prompts for a new administrator password
+or reads `ADMIN_PASSWORD` from the environment.
 
-## Running the Backend
-
-Start the FastAPI server:
+### 7. Start the API
 
 ```bash
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-The API will be available at:
+| Resource | Address |
+| --- | --- |
+| API | http://127.0.0.1:8000 |
+| Interactive API documentation | http://127.0.0.1:8000/docs |
+| OpenAPI schema | http://127.0.0.1:8000/openapi.json |
+| Health | http://127.0.0.1:8000/health |
+| Readiness | http://127.0.0.1:8000/readiness |
+| Active model | http://127.0.0.1:8000/model/status |
 
-```text
-http://127.0.0.1:8000
-```
-
-Swagger API documentation:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-OpenAPI schema:
-
-```text
-http://127.0.0.1:8000/openapi.json
-```
-
----
-
-## API Endpoints
-
-### General
-
-```text
-GET /
-GET /health
-GET /database/status
-GET /model/status
-```
-
-### Authentication
-
-```text
-POST /auth/register
-POST /auth/login
-GET  /auth/me
-```
-
-### NLP and Symptom Confirmation
-
-```text
-POST /nlp/map
-POST /symptoms/confirm
-```
-
-### Prediction
-
-```text
-POST /predict
-```
-
-`POST /predict` requires authentication.
-
-New predictions are linked to the authenticated patient's user ID.
-
-### Patient History
-
-```text
-GET /history
-GET /history/{prediction_id}
-```
-
-Both endpoints require authentication.
-
-Patients can access only their own prediction records.
-
-### Administrator
-
-```text
-GET /admin/history
-GET /admin/history/{prediction_id}
-GET /admin/feedback
-```
-
-These endpoints require an authenticated administrator account.
-
-### Feedback
-
-```text
-POST /feedback
-```
-
-`POST /feedback` requires authentication and only accepts the caller's own predictions.
-
----
-
-## Example Authentication Flow
-
-### 1. Register
-
-```text
-POST /auth/register
-```
-
-Example:
+`/health` reports application liveness; it does not establish full readiness.
+After V3 activation, inspect `/model/status` for:
 
 ```json
 {
-  "email": "patient@example.com",
-  "password": "TestPassword123!"
+  "model_type": "v3_partial_evidence",
+  "policy_id": "ddxplus_selective_research_v1",
+  "clinical_validation": false
 }
 ```
 
-The new account is created with:
+This is a subset of the expected response, not its complete schema.
 
-```text
-role = patient
-```
+## Typical API Flow
 
----
+1. Register using `POST /auth/register`.
+2. Log in using `POST /auth/login`.
+3. Send symptom text to `POST /nlp/map`.
+4. Let the user review recognised symptoms and submit them to
+   `POST /symptoms/confirm`, including any corrections.
+5. For a confirmed urgent case, save via `POST /safety/reviews` without requiring
+   demographics or model selection. Otherwise, submit to `POST /predict`.
+6. Display guidance and any permitted tentative research pattern.
+7. Retrieve saved records through `/history` and optionally submit feedback.
 
-### 2. Login
+Protected endpoints require:
 
-```text
-POST /auth/login
-```
-
-Example:
-
-```json
-{
-  "email": "patient@example.com",
-  "password": "TestPassword123!"
-}
-```
-
-Successful login returns:
-
-```json
-{
-  "access_token": "...",
-  "token_type": "bearer",
-  "expires_in_minutes": 60
-}
-```
-
----
-
-### 3. Use the Access Token
-
-Protected routes require:
-
-```text
+```http
 Authorization: Bearer <access_token>
 ```
 
-Examples of protected routes:
+### Example assessment request
 
-```text
+```http
 POST /predict
-POST /feedback
-GET /history
-GET /history/{prediction_id}
-GET /auth/me
+Content-Type: application/json
+Authorization: Bearer <access_token>
 ```
-
----
-
-## Example Prediction Request
-
-```text
-POST /predict
-```
-
-Example:
 
 ```json
 {
   "age": 25,
   "sex": "M",
   "text": "I have fever na kikohozi",
-  "confirmed_codes": [
-    "fever",
-    "cough"
-  ]
+  "confirmed_codes": ["fever", "cough"],
+  "language": "en"
 }
 ```
 
-The request requires a valid authenticated user.
+Use codes returned by the mapper and confirmed by the user. If corrections were
+made during confirmation, include them again in `/predict`: the backend remaps
+the original text rather than trusting browser-supplied model features.
 
-A successful response includes:
+This example does **not** guarantee a named research pattern.
+`/predict` also checks confirmed red flags before model selection.
 
-- Prediction ID
-- Status
-- Confirmed symptoms
-- Model features
-- Red-flag status
-- Top-three condition patterns
-- Model-confidence explanation
-- Health-awareness guidance
-- Disclaimer
+## Main API Endpoints
 
----
+| Area | Endpoints |
+| --- | --- |
+| Health and diagnostics | `GET /health`, `GET /readiness`, `GET /database/status`, `GET /model/status` |
+| Authentication | `POST /auth/register`, `POST /auth/login` |
+| Profile | `GET /auth/me`, `PATCH /auth/me` |
+| Symptom mapping | `POST /nlp/map` |
+| Confirmation | `POST /symptoms/confirm` |
+| Safety | `POST /safety/check`, `POST /safety/reviews` |
+| Assessment | `POST /predict` |
+| Patient history | `GET /history`, `GET /history/{prediction_id}` |
+| Feedback | `POST /feedback` |
+| Administrator history | `GET /admin/history`, `GET /admin/history/{prediction_id}` |
+| Administrator feedback | `GET /admin/feedback` |
+| Account management | Routes under `/admin/users` |
+| System management | Routes under `/admin/system` |
 
-## Automated Tests
+See `/docs` for complete schemas, password-reset routes, and access requirements.
 
-Tests are located in:
+- `/safety/check` requires no authentication, database, or model availability.
+  The API itself must still be running.
+- Saving safety reviews, submitting assessments, accessing patient history, and
+  submitting feedback require authentication.
+- Patients can access only their own history and submit feedback only for their
+  own saved sessions. Duplicate feedback for a session is rejected.
+- Administrator routes require a current authorised administrator account.
+
+## Project Structure
 
 ```text
-tests/
+ucs31-madhaparia-backend/
+├── alembic/                  # Database migrations
+├── app/
+│   ├── core/                 # Configuration, authentication, database
+│   ├── data/                 # Condition information and mappings
+│   ├── db/                   # Models, seeding, model registration
+│   ├── ml/                   # Model loaders, predictors, artifacts
+│   ├── nlp/                  # Symptom mapping and reported context
+│   ├── services/             # Assessment and application logic
+│   ├── admin_system_routes.py
+│   ├── admin_user_routes.py
+│   ├── password_reset_routes.py
+│   └── main.py
+├── docs/
+│   ├── images/               # README architecture diagram
+│   └── ...                   # Integration and feature documentation
+├── reports/                  # Recorded readiness reports
+├── tests/                    # Automated tests and fixtures
+├── .env.example
+├── MERGED_RELEASE.md
+├── requirements.txt
+└── requirements-dev.txt
 ```
 
-Current test files:
+## Testing
 
-```text
-conftest.py
-test_admin_access.py
-test_authentication.py
-test_basic_endpoints.py
-test_end_to_end.py
-test_history_feedback.py
-test_nlp_confirmation.py
-test_prediction_validation.py
-test_service_readiness.py
-test_symptom_catalog.py
-```
+Use a **dedicated PostgreSQL test database**, never a database containing real
+patient or production data.
 
-### Test database
+The shared fixture creates a temporary schema, applies migrations and seeds test
+data, then removes that schema after the run.
 
-The tests never use the database configured in `.env`.
-
-They need `TEST_DATABASE_URL` to point at a PostgreSQL database that is safe to use for testing, for example a local one:
-
-Windows (PowerShell):
+Windows PowerShell:
 
 ```powershell
 $env:TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/respiratory_test"
+$env:FRONTEND_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+python -m pytest tests -q -k "not candidate"
 ```
 
 Linux / macOS:
 
 ```bash
 export TEST_DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/respiratory_test"
+export FRONTEND_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
+python -m pytest tests -q -k "not candidate"
 ```
 
-For each run, `tests/conftest.py` creates a temporary schema inside that database, applies the Alembic migrations, seeds the symptom catalogue and model version, and drops the schema again at the end. No `.env` file and no manual seeding are needed to run the tests.
+The explicit CORS origins match the existing regression tests.
 
-The automated test suite covers:
+### Recorded verification and known failures
 
-### Authentication
+The [release notes](MERGED_RELEASE.md) record **371 passing tests** for the
+selected V3/account-feature suite. This is a recorded result, not a test run
+performed for this README update.
 
-- Email normalisation
-- Password hashing
-- Correct password verification
-- Incorrect password rejection
-- JWT creation
-- JWT decoding
-- JWT expiration
-- Invalid JWT rejection
-- Patient registration
-- Duplicate registration protection
-- Invalid email validation
-- Password length validation
-- Login success
-- Invalid login
-- `/auth/me` authentication
+The unrestricted suite is **not fully passing**: the last complete recorded
+run recorded 481 passes, 1 failure, and 76 setup errors in the older inactive
+candidate integration, which requires its original external runtime/bundle.
 
-### Prediction
-
-- Normal prediction
-- Red-flag prediction handling
-- Authentication requirement
-- Invalid age
-- Invalid sex
-- Invalid confirmed symptoms
-- Required confirmed model features
-- Patient prediction ownership
-
-### Patient History
-
-- Guest history rejection
-- Patient history access
-- Patient-specific history filtering
-- Individual history retrieval
-- Cross-user prediction blocking
-
-### Administrator Access
-
-- Guest admin-access rejection
-- Patient admin-access rejection
-- Administrator history access
-- Administrator individual prediction access
-- Administrator feedback access
-- Missing admin history record handling
-
-### NLP
-
-- Mixed English/Kiswahili input
-- Fuzzy spelling
-- Unmatched wording
-- Symptom confirmation
-- Partial confirmation
-- Red-flag confirmation
-- Safety-only red flags
-- Invalid confirmation
-
-### Feedback
-
-- Feedback submission
-- Authentication requirement
-- Unknown prediction handling
-- Duplicate feedback rejection
-- Comment length validation
-
-### End-to-end
-
-- Register, login, symptom mapping, prediction, history and feedback against a real database, with nothing mocked
-
-### Service readiness and limits
-
-- `503` when the symptom catalogue has not been seeded
-- `503` when no active model version is configured
-- Symptom text length limit
-- Confirmed symptom count limit
-- Rejection of missing, placeholder or short JWT secrets
-
-Run the full suite with:
+To include those candidate tests:
 
 ```bash
-python -m pytest -v
+python -m pytest tests -q
 ```
 
-Latest verified result:
+Software regression results do not establish clinical validity.
 
-```text
-74 passed
-0 failed
-1 warning
-```
+## Security and Data Handling
 
-The warning is an existing FastAPI/Starlette TestClient deprecation warning and does not cause a test failure.
+- Passwords are hashed using Argon2.
+- Protected routes use JWT authentication and current account checks.
+- Patient history and feedback are ownership-restricted.
+- Administrator access is role-protected.
+- Database migrations are explicit; back up populated databases before upgrades.
+- Saved symptom text, profiles, and assessments are sensitive health-related data.
 
----
-
-## Security
-
-The backend currently provides:
-
-- Argon2 password hashing
-- JWT authentication
-- Token expiration
-- Authentication requirements on private routes
-- Patient-specific prediction ownership
-- Patient-specific history filtering
-- Role-based administrator access
-- Cross-user history protection
-- Unique user emails
-- Environment-based JWT secret configuration
-- Environment-based database credentials
-
-Sensitive values such as:
-
-```text
-DATABASE_URL
-JWT_SECRET_KEY
-```
-
-must remain in `.env` and must not be committed to Git.
-
----
-
-## Validation and Reproducibility
-
-The backend has been validated through:
-
-- Automated pytest tests
-- Manual Swagger API testing
-- PostgreSQL database checks
-- Authentication tests
-- Patient ownership tests
-- Cross-user access tests
-- Administrator role tests
-- Alembic migration checks
-- Model artifact validation
-- Existing database record preservation checks
-
-The API can be reproduced using:
-
-1. Python 3.11
-2. Dependencies from `requirements.txt`
-3. A PostgreSQL database
-4. Environment variables in `.env`
-5. Alembic migrations
-6. The two seed commands
-7. The included trained model artifacts
-
----
+Administrator patient-account deletion permanently removes the account and its
+associated assessments, feedback, and password-reset challenges. Review
+[account-management documentation](docs/USER_ACCOUNT_MANAGEMENT.md) before use.
 
 ## Limitations
 
-The system has several important limitations:
+- The models have **not been clinically validated**.
+- Simulated DDXPlus profiles do not establish local clinical prevalence or
+  real-world diagnostic accuracy.
+- Serious-condition false associations remain a material limitation, regardless
+  of any displayed research score.
+- NLP recognition is limited to supported vocabulary, aliases, and context rules.
+- An unnamed or uncertain result does not establish that a person is healthy.
+- Red-flag rules are not a complete emergency triage system.
+- Conditional COVID testing advice is not a COVID diagnosis.
+- Historical model outputs may use different contracts from current V3 results.
 
-- The machine-learning model was trained using the project dataset and has not been clinically validated for real-world diagnosis.
-- Model-confidence values are not diagnostic probabilities.
-- The system does not replace medical professionals.
-- Red-flag logic is a controlled project safety mapping and is not a complete emergency triage system.
-- NLP symptom recognition is limited to the supported symptom vocabulary and aliases.
-- Older prediction records created before authentication may have no associated user ID.
-- Administrator accounts are not created through public registration; they are created with `python -m app.db.create_admin`.
+**Users with severe, urgent, or rapidly worsening symptoms should seek appropriate
+professional medical care rather than wait for an assessment from this system.**
 
----
+## Further Documentation
 
-## Health Disclaimer
+- [Merged release and V3 behaviour](MERGED_RELEASE.md)
+- [Password recovery setup](docs/PASSWORD_RESET_SETUP.md)
+- [Administrator account management](docs/USER_ACCOUNT_MANAGEMENT.md)
+- [Administrator system management](docs/SYSTEM_MANAGEMENT.md)
+- [Architecture diagram](docs/images/system-architecture.svg)
 
-This system is intended for **health-awareness and educational purposes only**.
+Some supporting documents contain historical branch names, machine-specific
+paths, or older verification results. Use this README for repository-root setup
+and confirm the actual deployment state through the API.
 
-It does not:
+## Related Work
 
-- Diagnose medical conditions
-- Replace a doctor or healthcare professional
-- Provide treatment decisions
-- Provide emergency medical services
-
-Users with severe, urgent, or rapidly worsening symptoms should seek appropriate professional medical care.
-
----
-
-## Related Repository
-
-Machine-learning development and NLP preparation are maintained separately in:
-
-```text
-ucs31-madhaparia-ml
-```
-
-The backend repository contains only the production model artifacts required for inference.
-
----
-
-## Current Backend Status
-
-Implemented:
-
-```text
-Machine-learning integration             COMPLETE
-NLP symptom mapping                      COMPLETE
-Symptom confirmation                     COMPLETE
-Red-flag handling                        COMPLETE
-Prediction endpoint                      COMPLETE
-Health-awareness guidance                COMPLETE
-PostgreSQL database                      COMPLETE
-Alembic migrations                       COMPLETE
-User authentication                      COMPLETE
-JWT security                             COMPLETE
-Patient prediction ownership             COMPLETE
-Patient-specific history                 COMPLETE
-Administrator history access             COMPLETE
-Administrator feedback access            COMPLETE
-Automated authentication testing         COMPLETE
-Role-based access testing                COMPLETE
-```
-
-Current automated test result:
-
-```text
-74 passed
-0 failed
-```
-
-The backend is ready for integration with the frontend application.
+Machine-learning development and NLP preparation are maintained separately in
+[ucs31-madhaparia-ml](https://github.com/RAM-AS-RAP/ucs31-madhaparia-ml).
+Frontend applications are maintained in
+[ucs31-madhaparia-frontend](https://github.com/RAM-AS-RAP/ucs31-madhaparia-frontend).
+This repository contains the backend API and inference integration.
